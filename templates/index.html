@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DYN | Draw Your Nails</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="intro">
+            <p class="eyebrow">DYN</p>
+            <h1>Draw Your Nails</h1>
+            <p class="intro-copy">Preview salon-ready nail styles on your own hand photo.</p>
+        </section>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <section class="alert" aria-live="polite">
+                    {% for message in messages %}
+                        <p>{{ message }}</p>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        {% if not result %}
+            <form class="preview-form" method="POST" enctype="multipart/form-data">
+                <nav class="step-tabs" aria-label="Preview steps">
+                    <span class="step-tab is-active" id="uploadTab">Upload</span>
+                    <span class="step-tab" id="styleTab">Style</span>
+                    <span class="step-tab" id="maskTab">Mask</span>
+                </nav>
+
+                <section class="form-step is-active" id="uploadStep">
+                    <div class="section-heading">
+                        <span class="step-number">1</span>
+                        <div>
+                            <h2>Upload Hand Photo</h2>
+                            <p>Start with a photo where the nails are visible.</p>
+                        </div>
+                    </div>
+
+                    <div class="upload-box" id="uploadBox">
+                        <div class="upload-placeholder" id="uploadPlaceholder">
+                            <span class="upload-icon" aria-hidden="true">
+                                <span></span>
+                            </span>
+                            <span class="upload-title">Upload a hand photo</span>
+                            <span class="upload-note"></span>
+                        </div>
+
+                        <div class="upload-preview" id="uploadPreview" hidden>
+                            <img id="uploadPreviewImage" src="" alt="Selected hand photo preview">
+                            <div class="upload-preview-actions">
+                                <button class="change-photo-button" id="changePhotoButton" type="button">
+                                    Change photo
+                                </button>
+                            </div>
+                        </div>
+
+                        <input
+                            class="upload-input"
+                            id="hand_photo"
+                            name="hand_photo"
+                            type="file"
+                            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                            required
+                        >
+                    </div>
+
+                    <button class="primary-button next-button" id="goToStylesButton" type="button" disabled>
+                        Continue
+                    </button>
+                </section>
+
+                <section class="form-step" id="styleStep" hidden>
+                    <div class="section-heading">
+                        <span class="step-number">2</span>
+                        <div>
+                            <h2>Choose Nail Style</h2>
+                            <p>Swipe through the examples and pick one style.</p>
+                        </div>
+                    </div>
+
+                    <div class="style-grid">
+                        {% for style in styles %}
+                            <label class="style-card">
+                                <input
+                                    type="radio"
+                                    name="nail_style"
+                                    value="{{ style }}"
+                                >
+                                <span class="style-example style-example-{{ loop.index }}" aria-hidden="true"></span>
+                                <span class="style-copy">
+                                    <span class="style-name">{{ style }}</span>
+                                    <span class="selected-pill" aria-hidden="true">Selected</span>
+                                </span>
+                            </label>
+                        {% endfor %}
+                    </div>
+
+                    <div class="button-row">
+                        <button class="secondary-button" id="backToUploadButton" type="button">Back</button>
+                        <button class="primary-button" id="goToMaskButton" type="button">Continue to Mask</button>
+                    </div>
+                </section>
+
+                <section class="form-step" id="maskStep" hidden>
+                    <div class="editor-topbar">
+                        <button class="topbar-button" id="backToStylesButton" type="button">Back</button>
+                        <div>
+                            <h2>Adjust nails</h2>
+                            <p id="savedNailsCount">0 saved</p>
+                        </div>
+                        <button class="topbar-button primary-topbar" id="topGenerateButton" type="button" disabled>Generate</button>
+                    </div>
+
+                    <input id="nail_mask" name="nail_mask" type="file" accept="image/png" hidden>
+                    <input id="selected_shape" name="selected_shape" type="hidden" value="oval">
+                    <input id="selected_length" name="selected_length" type="hidden" value="medium">
+
+                    <div class="guide-editor editor-shell">
+                        <div class="mask-canvas-wrap" id="maskCanvasWrap">
+                            <canvas id="guideCanvas"></canvas>
+                            <div class="editor-hint" id="editorInstruction">Tap the center of a nail to start.</div>
+                        </div>
+                    </div>
+
+                    <div class="editor-bottom-bar" aria-label="Nail editor actions">
+                        <div class="editor-fine-controls">
+                            <div class="shape-picker-field">
+                                <span class="control-label">Shape</span>
+                                <select class="visually-hidden-select" id="visibleShapeSelect" aria-label="Nail shape">
+                                    <option value="oval">Oval</option>
+                                    <option value="squoval">Squoval</option>
+                                    <option value="square">Square</option>
+                                    <option value="ballerina">Ballerina</option>
+                                    <option value="stiletto">Stiletto</option>
+                                    <option value="almond">Almond</option>
+                                </select>
+                                <button class="shape-picker-trigger" id="shapePickerTrigger" type="button" aria-expanded="false">
+                                    Oval
+                                </button>
+                                <div class="shape-choice-panel" id="shapeChoicePanel" aria-label="Choose nail shape" hidden>
+                                    <button class="shape-choice is-active" type="button" data-shape="oval">Oval</button>
+                                    <button class="shape-choice" type="button" data-shape="squoval">Squoval</button>
+                                    <button class="shape-choice" type="button" data-shape="square">Square</button>
+                                    <button class="shape-choice" type="button" data-shape="ballerina">Ballerina</button>
+                                    <button class="shape-choice" type="button" data-shape="stiletto">Stiletto</button>
+                                    <button class="shape-choice" type="button" data-shape="almond">Almond</button>
+                                </div>
+                            </div>
+                            <label class="rotation-field" for="visibleRotationSlider">
+                                Rotation
+                                <input id="visibleRotationSlider" type="range" min="-45" max="45" value="0">
+                            </label>
+                            <label class="size-field" for="sizeSlider">
+                                Size
+                                <input id="sizeSlider" type="range" min="70" max="140" value="100">
+                            </label>
+                            <label class="sharpness-field" for="sharpnessSlider">
+                                Sharpness
+                                <input id="sharpnessSlider" type="range" min="0" max="100" value="65">
+                            </label>
+                            <button class="symmetry-toggle" id="symmetryToggleButton" type="button" aria-pressed="true">
+                                Symmetry ON
+                            </button>
+                        </div>
+
+                        <div class="editor-action-row">
+                            <button class="editor-button secondary-action" id="saveNailButton" type="button">Save Nail</button>
+                            <button class="editor-button secondary-action" id="addNailButton" type="button">Add Nail</button>
+                            <button class="editor-button ghost-action" id="undoButton" type="button" disabled>Undo</button>
+                            <button class="editor-button danger-action" id="deleteNailButton" type="button">Delete</button>
+                            <button class="editor-button ghost-action" id="viewFullButton" type="button">View Full</button>
+                            <button class="editor-button primary-action" id="bottomGenerateButton" type="button" disabled>Generate</button>
+                        </div>
+                    </div>
+
+                    <div class="hidden-editor-settings" aria-hidden="true">
+                        <input class="hidden-slider" id="lengthSlider" type="range" min="60" max="180" value="110" tabindex="-1">
+                        <input class="hidden-slider" id="widthSlider" type="range" min="30" max="120" value="58" tabindex="-1">
+                    </div>
+
+                    <button class="primary-button hidden-submit" id="submitButton" type="submit">Generate Preview</button>
+                </section>
+            </form>
+        {% else %}
+            <section class="result-panel" id="resultSection">
+                <nav class="step-tabs" aria-label="Preview steps">
+                    <span class="step-tab">Upload</span>
+                    <span class="step-tab">Style</span>
+                    <span class="step-tab is-active">Result</span>
+                </nav>
+
+                <div class="section-heading">
+                    <span class="step-number">3</span>
+                    <div>
+                        <h2>Your Preview Request</h2>
+                        <p>{{ result.message }}</p>
+                    </div>
+                </div>
+
+                <div class="result-content result-comparison">
+                    <div class="result-image-card">
+                        <span class="result-label">Original photo</span>
+                        <img src="{{ result.original_image_url }}" alt="Original uploaded hand photo">
+                    </div>
+
+                    <div class="result-image-card">
+                        <span class="result-label">AI nail preview</span>
+                        <img src="{{ result.generated_image_url }}" alt="AI generated nail preview">
+                    </div>
+
+                    <div class="result-details">
+                        <span class="result-label">Selected style</span>
+                        <strong>{{ result.selected_style }}</strong>
+                    </div>
+                </div>
+
+                <div class="result-actions">
+                    <a class="secondary-link" href="{{ url_for('index') }}">Try Same Style Again</a>
+                    <a class="secondary-link" href="{{ url_for('index') }}">Try Another Style</a>
+                    <a class="primary-link" href="{{ result.generated_image_url }}" download>
+                        Download Preview
+                    </a>
+                </div>
+            </section>
+        {% endif %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
