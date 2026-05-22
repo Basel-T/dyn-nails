@@ -613,7 +613,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function drawSvgTemplateGuidePath(canvasContext, guide) {
         const commands = svgShapeCommands(guide.shape);
 
-        if (!symmetryEnabled) {
+        if (guide.asymmetric) {
             drawMappedSvgCommands(canvasContext, commands, asymmetricTemplateMapper(guide));
             return;
         }
@@ -857,7 +857,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // drawHandles() uses guide.points, so this controls where the visible dots
     // appear on the canvas.
     function updateGuidePoints(guide) {
-        if (!symmetryEnabled) {
+        if (guide.asymmetric) {
             guide.points = Object.fromEntries(
                 TEMPLATE_HANDLE_NAMES.map((name) => [name, localToImage(guide, guide.localHandles[name].x, guide.localHandles[name].y)]),
             );
@@ -916,6 +916,7 @@ document.addEventListener("DOMContentLoaded", function () {
             tipRoundness: template.tipRoundness,
             sizeValue: template.sizeValue || 100,
             shape: template.shape,
+            asymmetric: template.asymmetric || false,
             saved: false,
             points: {},
             localHandles: cloneLocalHandles(template.localHandles),
@@ -932,6 +933,7 @@ document.addEventListener("DOMContentLoaded", function () {
             tipRoundness,
             sizeValue: 100,
             shape,
+            asymmetric: false,
             saved: false,
             points: {},
             localHandles: defaultLocalHandles(shape, baseWidth, length, tipRoundness),
@@ -968,6 +970,7 @@ document.addEventListener("DOMContentLoaded", function () {
             tipRoundness: guide.tipRoundness,
             sizeValue: guide.sizeValue || 100,
             rotation: guide.rotation,
+            asymmetric: guide.asymmetric || false,
             localHandles: cloneLocalHandles(guide.localHandles),
         };
     }
@@ -1063,6 +1066,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (shapeChanged) {
             guide.localHandles = defaultLocalHandles(guide.shape, guide.baseWidth, guide.length, guide.tipRoundness);
+            guide.asymmetric = false;
             guide.sizeValue = 100;
             sizeSlider.value = "100";
         }
@@ -1675,6 +1679,7 @@ document.addEventListener("DOMContentLoaded", function () {
         local.topLeft = { x: -topHalf, y: topY };
         local.topRight = { x: topHalf, y: topY };
         local.tip.x = 0;
+        guide.asymmetric = false;
         updateGuideMetricsFromHandles(guide);
         updateGuidePoints(guide);
     }
@@ -1745,6 +1750,16 @@ document.addEventListener("DOMContentLoaded", function () {
         updateSymmetryButton();
     }
 
+    function freezeVisibleAnchorsForAsymmetricEditing(guide) {
+        updateGuidePoints(guide);
+        guide.localHandles = Object.fromEntries(
+            TEMPLATE_HANDLE_NAMES.map((name) => [name, imageToLocal(guide.points[name], guide)]),
+        );
+        guide.asymmetric = true;
+        updateGuideMetricsFromHandles(guide);
+        updateGuidePoints(guide);
+    }
+
     function enterTapNextNailMode() {
         const guide = selectedGuide();
 
@@ -1796,6 +1811,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (!guide.localHandles[handleName]) {
             return;
+        }
+
+        if (!symmetryEnabled && !guide.asymmetric) {
+            freezeVisibleAnchorsForAsymmetricEditing(guide);
         }
 
         guide.localHandles[handleName] = local;
