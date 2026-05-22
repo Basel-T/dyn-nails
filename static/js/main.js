@@ -326,6 +326,7 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     const TEMPLATE_HANDLE_NAMES = ["bottomLeft", "bottomRight", "topLeft", "topRight", "tip"];
+    const ASYMMETRIC_HANDLE_NAMES = ["bottomLeft", "sideLeft", "topLeft", "tip", "topRight", "sideRight", "bottomRight"];
     const SVG_TEMPLATE_ANCHORS = {
         oval: {
             bottomLeft: { x: 0, y: 84.621 },
@@ -568,53 +569,11 @@ document.addEventListener("DOMContentLoaded", function () {
         };
     }
 
-    function asymmetricTemplateMapper(guide) {
-        const local = guide.localHandles;
-        const anchors = templateAnchors(guide.shape);
-        const shape = normalizedShape(guide.shape);
-        const flatTopShape = shape === "squoval" || shape === "square" || shape === "ballerina";
-        const topY = (anchors.topLeft.y + anchors.topRight.y) / 2;
-        const bottomY = (anchors.bottomLeft.y + anchors.bottomRight.y) / 2;
-
-        return function mapTemplatePoint(templateX, templateY) {
-            let leftTemplateX;
-            let rightTemplateX;
-            let leftLocal;
-            let rightLocal;
-
-            if (flatTopShape && templateY <= topY) {
-                leftTemplateX = anchors.topLeft.x;
-                rightTemplateX = anchors.topRight.x;
-                leftLocal = local.topLeft;
-                rightLocal = local.topRight;
-            } else if (templateY <= topY) {
-                const amount = clamp(templateY / Math.max(1, topY), 0, 1);
-
-                leftTemplateX = anchors.tip.x + (anchors.topLeft.x - anchors.tip.x) * amount;
-                rightTemplateX = anchors.tip.x + (anchors.topRight.x - anchors.tip.x) * amount;
-                leftLocal = interpolatePoint(local.tip, local.topLeft, amount);
-                rightLocal = interpolatePoint(local.tip, local.topRight, amount);
-            } else {
-                const amount = clamp((templateY - topY) / Math.max(1, bottomY - topY), 0, 1);
-
-                leftTemplateX = anchors.topLeft.x + (anchors.bottomLeft.x - anchors.topLeft.x) * amount;
-                rightTemplateX = anchors.topRight.x + (anchors.bottomRight.x - anchors.topRight.x) * amount;
-                leftLocal = interpolatePoint(local.topLeft, local.bottomLeft, amount);
-                rightLocal = interpolatePoint(local.topRight, local.bottomRight, amount);
-            }
-
-            const across = clamp((templateX - leftTemplateX) / Math.max(1, rightTemplateX - leftTemplateX), 0, 1);
-            const localPoint = interpolatePoint(leftLocal, rightLocal, across);
-
-            return localToImage(guide, localPoint.x, localPoint.y);
-        };
-    }
-
     function drawSvgTemplateGuidePath(canvasContext, guide) {
         const commands = svgShapeCommands(guide.shape);
 
         if (guide.asymmetric) {
-            drawMappedSvgCommands(canvasContext, commands, asymmetricTemplateMapper(guide));
+            drawAsymmetricGuidePath(canvasContext, guide);
             return;
         }
 
@@ -696,17 +655,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (!local.sideLeft) {
             local.sideLeft = {
-                x: local.bottomLeft.x * 0.95,
+                x: local.bottomLeft.x + (local.topLeft.x - local.bottomLeft.x) * 0.45,
                 y: (local.bottomLeft.y + local.topLeft.y) / 2,
             };
         }
 
         if (!local.sideRight) {
             local.sideRight = {
-                x: local.bottomRight.x * 0.95,
+                x: local.bottomRight.x + (local.topRight.x - local.bottomRight.x) * 0.45,
                 y: (local.bottomRight.y + local.topRight.y) / 2,
             };
         }
+    }
+
+    function activeHandleNames(guide) {
+        return guide && guide.asymmetric ? ASYMMETRIC_HANDLE_NAMES : TEMPLATE_HANDLE_NAMES;
     }
 
     function cloneGuide(guide) {
@@ -858,8 +821,9 @@ document.addEventListener("DOMContentLoaded", function () {
     // appear on the canvas.
     function updateGuidePoints(guide) {
         if (guide.asymmetric) {
+            ensureSideHandles(guide);
             guide.points = Object.fromEntries(
-                TEMPLATE_HANDLE_NAMES.map((name) => [name, localToImage(guide, guide.localHandles[name].x, guide.localHandles[name].y)]),
+                activeHandleNames(guide).map((name) => [name, localToImage(guide, guide.localHandles[name].x, guide.localHandles[name].y)]),
             );
             return;
         }
@@ -1316,7 +1280,75 @@ document.addEventListener("DOMContentLoaded", function () {
         canvasContext.closePath();
     }
 
-    // Draws the actual nail shape from the 5 guide points.
+    // Draws the free/asymmetric nail shape.
+    //
+    // This is used only after Symmetry is OFF and the user starts moving
+    // points freely. It intentionally does NOT remap the SVG template, because
+    // that made one dragged point reinterpret the whole silhouette. Here the
+    // visible shape is controlled directly by the user's handles:
+    // - bottomLeft / bottomRight anchor the cuticle corners
+    // - sideLeft / sideRight pull the side curves
+    // - topLeft / topRight anchor the upper corners
+    // - tip controls the middle/top direction
+    function drawAsymmetricGuidePath(canvasContext, guide) {
+        ensureSideHandles(guide);
+
+        const local = guide.localHandles;
+        const shape = normalizedShape(guide.shape || "oval");
+        const p = (x, y) => localToImage(guide, x, y);
+        const bottomLeft = p(local.bottomLeft.x, local.bottomLeft.y);
+        const bottomRight = p(local.bottomRight.x, local.bottomRight.y);
+        const sideLeft = p(local.sideLeft.x, local.sideLeft.y);
+        const sideRight = p(local.sideRight.x, local.sideRight.y);
+        const topLeft = p(local.topLeft.x, local.topLeft.y);
+        const topRight = p(local.topRight.x, local.topRight.y);
+        const tip = p(local.tip.x, local.tip.y);
+        const topSpan = Math.max(guideLimits().minWidth, Math.abs(local.topRight.x - local.topLeft.x));
+        const flatTopShape = shape === "squoval" || shape === "square" || shape === "ballerina";
+        const cuticle = p(
+            (local.bottomLeft.x + local.bottomRight.x) / 2,
+            Math.min(local.bottomLeft.y, local.bottomRight.y) - guide.length * 0.08,
+        );
+
+        canvasContext.beginPath();
+        canvasContext.moveTo(bottomLeft.x, bottomLeft.y);
+
+        // The middle side points are Bezier controls. Moving one of them pulls
+        // only that side curve, which is what makes thumb fitting possible.
+        canvasContext.bezierCurveTo(sideLeft.x, sideLeft.y, sideLeft.x, sideLeft.y, topLeft.x, topLeft.y);
+
+        if (flatTopShape) {
+            // Flat-top shapes should stay readable when edited freely. The tip
+            // is the center of the top edge, not a hidden reshaper.
+            canvasContext.lineTo(tip.x, tip.y);
+            canvasContext.lineTo(topRight.x, topRight.y);
+        } else {
+            const tipHandle = topSpan * (
+                shape === "stiletto" ? 0.035 :
+                shape === "almond" ? 0.16 :
+                0.28
+            );
+            const leftTipControl = p(local.tip.x - tipHandle, local.tip.y);
+            const rightTipControl = p(local.tip.x + tipHandle, local.tip.y);
+            const leftShoulder = p(
+                local.topLeft.x + (local.tip.x - local.topLeft.x) * 0.38,
+                local.topLeft.y + (local.tip.y - local.topLeft.y) * 0.12,
+            );
+            const rightShoulder = p(
+                local.topRight.x + (local.tip.x - local.topRight.x) * 0.38,
+                local.topRight.y + (local.tip.y - local.topRight.y) * 0.12,
+            );
+
+            canvasContext.bezierCurveTo(leftShoulder.x, leftShoulder.y, leftTipControl.x, leftTipControl.y, tip.x, tip.y);
+            canvasContext.bezierCurveTo(rightTipControl.x, rightTipControl.y, rightShoulder.x, rightShoulder.y, topRight.x, topRight.y);
+        }
+
+        canvasContext.bezierCurveTo(sideRight.x, sideRight.y, sideRight.x, sideRight.y, bottomRight.x, bottomRight.y);
+        canvasContext.quadraticCurveTo(cuticle.x, cuticle.y, bottomLeft.x, bottomLeft.y);
+        canvasContext.closePath();
+    }
+
+    // Draws the actual nail shape from the guide points.
     //
     // This is the MOST IMPORTANT drawing function:
     // - renderGuide() calls it for the visible white overlay
@@ -1479,19 +1511,21 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function drawHandles(guide) {
+        const handlesToShow = activeHandleNames(guide);
+
         Object.entries(guide.points).forEach(([name, point]) => {
-            if (!TEMPLATE_HANDLE_NAMES.includes(name)) {
+            if (!handlesToShow.includes(name)) {
                 return;
             }
 
             const screenPoint = imageToScreen(point);
 
             context.beginPath();
-            context.arc(screenPoint.x, screenPoint.y, 6.5, 0, Math.PI * 2);
+            context.arc(screenPoint.x, screenPoint.y, name.startsWith("side") ? 5.8 : 6.5, 0, Math.PI * 2);
             context.fillStyle = "rgba(255, 255, 255, 0.68)";
             context.fill();
             context.lineWidth = 2;
-            context.strokeStyle = "rgba(225, 45, 92, 0.62)";
+            context.strokeStyle = name.startsWith("side") ? "rgba(150, 92, 255, 0.68)" : "rgba(225, 45, 92, 0.62)";
             context.stroke();
         });
     }
@@ -1521,8 +1555,10 @@ document.addEventListener("DOMContentLoaded", function () {
             return null;
         }
 
+        const handlesToHit = activeHandleNames(guide);
+
         for (const [name, point] of Object.entries(guide.points)) {
-            if (!TEMPLATE_HANDLE_NAMES.includes(name)) {
+            if (!handlesToHit.includes(name)) {
                 continue;
             }
 
@@ -1567,6 +1603,10 @@ document.addEventListener("DOMContentLoaded", function () {
     function createAndSelectGuide(imagePoint) {
         rememberUndoState();
         const guide = createGuide(imagePoint);
+
+        if (!symmetryEnabled) {
+            freezeVisibleAnchorsForAsymmetricEditing(guide);
+        }
 
         guides.push(guide);
         selectGuide(guide);
@@ -1668,16 +1708,21 @@ document.addEventListener("DOMContentLoaded", function () {
     // When the user turns Symmetry ON after editing asymmetrically, this makes
     // the selected guide balanced again by averaging left/right pairs.
     function symmetrizeGuide(guide) {
+        ensureSideHandles(guide);
         const local = guide.localHandles;
         const bottomHalf = (Math.abs(local.bottomLeft.x) + Math.abs(local.bottomRight.x)) / 2;
         const bottomY = (local.bottomLeft.y + local.bottomRight.y) / 2;
         const topHalf = (Math.abs(local.topLeft.x) + Math.abs(local.topRight.x)) / 2;
         const topY = (local.topLeft.y + local.topRight.y) / 2;
+        const sideHalf = (Math.abs(local.sideLeft.x) + Math.abs(local.sideRight.x)) / 2;
+        const sideY = (local.sideLeft.y + local.sideRight.y) / 2;
 
         local.bottomLeft = { x: -bottomHalf, y: bottomY };
         local.bottomRight = { x: bottomHalf, y: bottomY };
         local.topLeft = { x: -topHalf, y: topY };
         local.topRight = { x: topHalf, y: topY };
+        local.sideLeft = { x: -sideHalf, y: sideY };
+        local.sideRight = { x: sideHalf, y: sideY };
         local.tip.x = 0;
         guide.asymmetric = false;
         updateGuideMetricsFromHandles(guide);
@@ -1699,6 +1744,28 @@ document.addEventListener("DOMContentLoaded", function () {
         const local = guide.localHandles;
         const minHalfWidth = limits.minWidth * 0.5;
         const maxHalfWidth = limits.maxWidth * 0.8;
+
+        if (guide.asymmetric && !symmetryEnabled) {
+            ensureSideHandles(guide);
+
+            const point = local[handleName];
+
+            if (point) {
+                // Freeform thumb mode: keep the point inside a generous local
+                // editing box, but do not force left/right signs, mirror it, or
+                // recenter the template. This keeps the user's anchors where
+                // they placed them.
+                point.x = clamp(point.x, -maxHalfWidth * 1.8, maxHalfWidth * 1.8);
+                point.y = clamp(point.y, -guide.length * 0.9, guide.length * 0.95);
+            }
+
+            guide.rotation = clamp(guide.rotation, -45, 45);
+            guide.tipRoundness = clamp(guide.tipRoundness ?? 55, 0, 100);
+            guide.roundness = guide.tipRoundness;
+            updateGuideMetricsFromHandles(guide);
+            updateGuidePoints(guide);
+            return;
+        }
 
         if (handleName === "bottomLeft") {
             local.bottomLeft.x = clamp(local.bottomLeft.x, -maxHalfWidth, -minHalfWidth);
@@ -1744,7 +1811,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (symmetryEnabled && guide) {
             symmetrizeGuide(guide);
         } else if (guide) {
-            updateGuidePoints(guide);
+            freezeVisibleAnchorsForAsymmetricEditing(guide);
         }
 
         updateSymmetryButton();
@@ -1755,6 +1822,7 @@ document.addEventListener("DOMContentLoaded", function () {
         guide.localHandles = Object.fromEntries(
             TEMPLATE_HANDLE_NAMES.map((name) => [name, imageToLocal(guide.points[name], guide)]),
         );
+        ensureSideHandles(guide);
         guide.asymmetric = true;
         updateGuideMetricsFromHandles(guide);
         updateGuidePoints(guide);
