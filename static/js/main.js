@@ -326,6 +326,50 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     const TEMPLATE_HANDLE_NAMES = ["bottomLeft", "bottomRight", "topLeft", "topRight", "tip"];
+    const SVG_TEMPLATE_ANCHORS = {
+        oval: {
+            bottomLeft: { x: 0, y: 84.621 },
+            bottomRight: { x: 100, y: 84.621 },
+            topLeft: { x: 2.681, y: 24.044 },
+            topRight: { x: 97.319, y: 24.044 },
+            tip: { x: 50, y: 0.617 },
+        },
+        squoval: {
+            bottomLeft: { x: 0.381, y: 81.961 },
+            bottomRight: { x: 100, y: 82.144 },
+            topLeft: { x: 34.088, y: 0 },
+            topRight: { x: 65.15, y: 0.183 },
+            tip: { x: 50, y: 0 },
+        },
+        square: {
+            bottomLeft: { x: 0, y: 85.669 },
+            bottomRight: { x: 100, y: 85.061 },
+            topLeft: { x: 33.878, y: 0.304 },
+            topRight: { x: 66.539, y: 0.304 },
+            tip: { x: 50, y: 0.304 },
+        },
+        ballerina: {
+            bottomLeft: { x: 0, y: 80.75 },
+            bottomRight: { x: 100, y: 79.949 },
+            topLeft: { x: 29.529, y: 0 },
+            topRight: { x: 71.812, y: 0 },
+            tip: { x: 50, y: 0 },
+        },
+        stiletto: {
+            bottomLeft: { x: 4.282, y: 79.374 },
+            bottomRight: { x: 95.718, y: 79.549 },
+            topLeft: { x: 5.836, y: 42.473 },
+            topRight: { x: 92.609, y: 38.031 },
+            tip: { x: 50.19, y: 0 },
+        },
+        almond: {
+            bottomLeft: { x: 0, y: 80.796 },
+            bottomRight: { x: 100, y: 80.796 },
+            topLeft: { x: 0.534, y: 39.025 },
+            topRight: { x: 99.466, y: 39.025 },
+            tip: { x: 50, y: 0 },
+        },
+    };
     const parsedSvgShapeTemplates = {};
 
     function parseSvgPathData(pathData) {
@@ -407,34 +451,86 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    function templateAnchors(shape) {
+        return SVG_TEMPLATE_ANCHORS[normalizedShape(shape)] || SVG_TEMPLATE_ANCHORS.oval;
+    }
+
+    function localPointFromTemplateBox(box, anchor) {
+        return {
+            x: box.left + (anchor.x / 100) * box.width,
+            y: box.top - (anchor.y / 100) * box.height,
+        };
+    }
+
+    function defaultTemplateBox(baseWidth, length, shape) {
+        const anchors = templateAnchors(shape);
+        const bottomSpan = Math.max(1, anchors.bottomRight.x - anchors.bottomLeft.x);
+        const boxWidth = baseWidth * (100 / bottomSpan);
+        const boxHeight = length;
+
+        return {
+            left: -boxWidth / 2,
+            right: boxWidth / 2,
+            top: length * 0.56,
+            bottom: length * 0.56 - boxHeight,
+            width: boxWidth,
+            height: boxHeight,
+        };
+    }
+
     function guideTemplateBox(guide) {
         const local = guide.localHandles;
+        const anchors = templateAnchors(guide.shape);
         const minWidth = guideLimits().minWidth;
         const minHeight = guideLimits().minLength;
-        let left = Math.min(local.bottomLeft.x, local.topLeft.x, local.tip.x);
-        let right = Math.max(local.bottomRight.x, local.topRight.x, local.tip.x);
-        let top = Math.max(local.topLeft.y, local.topRight.y, local.tip.y);
-        let bottom = Math.min(local.bottomLeft.y, local.bottomRight.y);
+        const widthCandidates = [];
+        const heightCandidates = [];
 
-        if (right - left < minWidth) {
-            const centerX = (left + right) / 2;
-            left = centerX - minWidth / 2;
-            right = centerX + minWidth / 2;
+        function addWidthCandidate(leftName, rightName) {
+            const anchorSpan = anchors[rightName].x - anchors[leftName].x;
+            const localSpan = local[rightName].x - local[leftName].x;
+
+            if (Math.abs(anchorSpan) > 1 && Math.abs(localSpan) > 1) {
+                widthCandidates.push(Math.abs(localSpan) * (100 / Math.abs(anchorSpan)));
+            }
         }
 
-        if (top - bottom < minHeight) {
-            const centerY = (top + bottom) / 2;
-            top = centerY + minHeight / 2;
-            bottom = centerY - minHeight / 2;
+        function addHeightCandidate(topName, bottomName) {
+            const anchorSpan = anchors[bottomName].y - anchors[topName].y;
+            const localSpan = local[topName].y - local[bottomName].y;
+
+            if (Math.abs(anchorSpan) > 1 && Math.abs(localSpan) > 1) {
+                heightCandidates.push(Math.abs(localSpan) * (100 / Math.abs(anchorSpan)));
+            }
         }
+
+        addWidthCandidate("bottomLeft", "bottomRight");
+        addWidthCandidate("topLeft", "topRight");
+        addHeightCandidate("tip", "bottomLeft");
+        addHeightCandidate("tip", "bottomRight");
+        addHeightCandidate("topLeft", "bottomLeft");
+        addHeightCandidate("topRight", "bottomRight");
+
+        const width = clamp(
+            widthCandidates.reduce((sum, value) => sum + value, 0) / Math.max(1, widthCandidates.length),
+            minWidth,
+            guideLimits().maxWidth * 1.8,
+        );
+        const height = clamp(
+            heightCandidates.reduce((sum, value) => sum + value, 0) / Math.max(1, heightCandidates.length),
+            minHeight,
+            guideLimits().maxLength * 1.25,
+        );
+        const left = TEMPLATE_HANDLE_NAMES.reduce((sum, name) => sum + local[name].x - (anchors[name].x / 100) * width, 0) / TEMPLATE_HANDLE_NAMES.length;
+        const top = TEMPLATE_HANDLE_NAMES.reduce((sum, name) => sum + local[name].y + (anchors[name].y / 100) * height, 0) / TEMPLATE_HANDLE_NAMES.length;
 
         return {
             left,
-            right,
+            right: left + width,
             top,
-            bottom,
-            width: right - left,
-            height: top - bottom,
+            bottom: top - height,
+            width,
+            height,
         };
     }
 
@@ -494,22 +590,15 @@ document.addEventListener("DOMContentLoaded", function () {
     // Edit shapeTemplate() if a preset should start wider, narrower, rounder,
     // or sharper.
     function defaultLocalHandles(shape, baseWidth, length, tipRoundness) {
-        const sharpness = clamp(tipRoundness, 0, 100) / 100;
-        const baseHalf = baseWidth * 0.5;
-        const template = shapeTemplate(shape, sharpness);
-        const topHalf = baseHalf * template.topHalf;
-        const topY = length * template.topY;
-        const apexY = topY + length * template.apexY;
+        const anchors = templateAnchors(shape);
+        const box = defaultTemplateBox(baseWidth, length, shape);
+        const handles = {};
 
-        return {
-            bottomLeft: { x: -baseHalf, y: -length * 0.4 },
-            bottomRight: { x: baseHalf, y: -length * 0.4 },
-            sideLeft: { x: -baseHalf * 0.95, y: length * 0.12 },
-            sideRight: { x: baseHalf * 0.95, y: length * 0.12 },
-            topLeft: { x: -topHalf, y: topY },
-            topRight: { x: topHalf, y: topY },
-            tip: { x: 0, y: apexY },
-        };
+        TEMPLATE_HANDLE_NAMES.forEach((name) => {
+            handles[name] = localPointFromTemplateBox(box, anchors[name]);
+        });
+
+        return handles;
     }
 
     // Make a safe copy of a guide's points.
@@ -652,6 +741,13 @@ document.addEventListener("DOMContentLoaded", function () {
         guide.tipRoundness = clamp(guide.tipRoundness ?? 70, 0, 100);
         guide.roundness = guide.tipRoundness;
         guide.localHandles = guide.localHandles || defaultLocalHandles(guide.shape, guide.baseWidth, guide.length, guide.tipRoundness);
+
+        if (SVG_SHAPE_TEMPLATES[normalizedShape(guide.shape)]) {
+            updateGuideMetricsFromHandles(guide);
+            updateGuidePoints(guide);
+            return;
+        }
+
         ensureSideHandles(guide);
         constrainLocalHandles(guide);
         updateGuideMetricsFromHandles(guide);
@@ -679,9 +775,14 @@ document.addEventListener("DOMContentLoaded", function () {
     // drawHandles() uses guide.points, so this controls where the visible dots
     // appear on the canvas.
     function updateGuidePoints(guide) {
-        ensureSideHandles(guide);
+        const anchors = templateAnchors(guide.shape);
+        const box = guideTemplateBox(guide);
+
         guide.points = Object.fromEntries(
-            Object.entries(guide.localHandles).map(([name, point]) => [name, localToImage(guide, point.x, point.y)]),
+            TEMPLATE_HANDLE_NAMES.map((name) => {
+                const localPoint = localPointFromTemplateBox(box, anchors[name]);
+                return [name, localToImage(guide, localPoint.x, localPoint.y)];
+            }),
         );
     }
 
@@ -1442,6 +1543,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function updateSymmetryButton() {
         symmetryToggleButton.textContent = symmetryEnabled ? "Symmetry ON" : "Symmetry OFF";
         symmetryToggleButton.setAttribute("aria-pressed", String(symmetryEnabled));
+        symmetryToggleButton.classList.toggle("is-active", symmetryEnabled);
         if (selectedGuide()) {
             render();
         }
@@ -1478,18 +1580,14 @@ document.addEventListener("DOMContentLoaded", function () {
         const bottomY = (local.bottomLeft.y + local.bottomRight.y) / 2;
         const topHalf = (Math.abs(local.topLeft.x) + Math.abs(local.topRight.x)) / 2;
         const topY = (local.topLeft.y + local.topRight.y) / 2;
-        ensureSideHandles(guide);
-        const sideHalf = (Math.abs(local.sideLeft.x) + Math.abs(local.sideRight.x)) / 2;
-        const sideY = (local.sideLeft.y + local.sideRight.y) / 2;
 
         local.bottomLeft = { x: -bottomHalf, y: bottomY };
         local.bottomRight = { x: bottomHalf, y: bottomY };
-        local.sideLeft = { x: -sideHalf, y: sideY };
-        local.sideRight = { x: sideHalf, y: sideY };
         local.topLeft = { x: -topHalf, y: topY };
         local.topRight = { x: topHalf, y: topY };
         local.tip.x = 0;
-        constrainGuide(guide);
+        updateGuideMetricsFromHandles(guide);
+        updateGuidePoints(guide);
     }
 
     // Minimal live-drag safety.
