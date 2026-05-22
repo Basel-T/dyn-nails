@@ -28,7 +28,7 @@ LOGS_FOLDER = "logs"
 ERROR_LOG_PATH = os.path.join(LOGS_FOLDER, "openai_errors.log")
 
 # Defaults are intentionally low-cost for the MVP.
-DEFAULT_IMAGE_MODEL = "gpt-image-1.5"
+DEFAULT_IMAGE_MODEL = "gpt-image-2"
 DEFAULT_IMAGE_QUALITY = "low"
 
 
