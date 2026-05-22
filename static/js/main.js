@@ -337,15 +337,15 @@ document.addEventListener("DOMContentLoaded", function () {
         squoval: {
             bottomLeft: { x: 0.381, y: 81.961 },
             bottomRight: { x: 100, y: 82.144 },
-            topLeft: { x: 34.088, y: 0 },
-            topRight: { x: 65.15, y: 0.183 },
+            topLeft: { x: 0.381, y: 15.989 },
+            topRight: { x: 100, y: 17.081 },
             tip: { x: 50, y: 0 },
         },
         square: {
             bottomLeft: { x: 0, y: 85.669 },
             bottomRight: { x: 100, y: 85.061 },
-            topLeft: { x: 33.878, y: 0.304 },
-            topRight: { x: 66.539, y: 0.304 },
+            topLeft: { x: 0, y: 7.213 },
+            topRight: { x: 100, y: 7.213 },
             tip: { x: 50, y: 0.304 },
         },
         ballerina: {
