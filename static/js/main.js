@@ -330,8 +330,8 @@ document.addEventListener("DOMContentLoaded", function () {
         oval: {
             bottomLeft: { x: 0, y: 84.621 },
             bottomRight: { x: 100, y: 84.621 },
-            topLeft: { x: 2.681, y: 24.044 },
-            topRight: { x: 97.319, y: 24.044 },
+            topLeft: { x: 8.881, y: 14.484 },
+            topRight: { x: 91.119, y: 14.484 },
             tip: { x: 50, y: 0.617 },
         },
         squoval: {
@@ -358,15 +358,15 @@ document.addEventListener("DOMContentLoaded", function () {
         stiletto: {
             bottomLeft: { x: 4.282, y: 79.374 },
             bottomRight: { x: 95.718, y: 79.549 },
-            topLeft: { x: 5.836, y: 42.473 },
-            topRight: { x: 92.609, y: 38.031 },
+            topLeft: { x: 14.416, y: 25.617 },
+            topRight: { x: 85.584, y: 25.617 },
             tip: { x: 50.19, y: 0 },
         },
         almond: {
             bottomLeft: { x: 0, y: 80.796 },
             bottomRight: { x: 100, y: 80.796 },
-            topLeft: { x: 0.534, y: 39.025 },
-            topRight: { x: 99.466, y: 39.025 },
+            topLeft: { x: 7.637, y: 24.005 },
+            topRight: { x: 92.363, y: 24.005 },
             tip: { x: 50, y: 0 },
         },
     };
