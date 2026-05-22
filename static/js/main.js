@@ -4,7 +4,7 @@
 // section below. The important flow is:
 // 1. A guide is created from 5 local points in defaultLocalHandles().
 // 2. The user drags those points in updateGuideFromHandleDrag().
-// 3. The white guide shape is drawn in drawGuidePath().
+// 3. The white guide shape is drawn in drawGuidePath() from SVG templates.
 // 4. The final black/white mask is exported in buildMaskCanvas().
 document.addEventListener("DOMContentLoaded", function () {
     const fileInput = document.getElementById("hand_photo");
@@ -300,6 +300,164 @@ document.addEventListener("DOMContentLoaded", function () {
         // Older saved guides may still say "coffin"; the reference image calls
         // that same flat/tapered silhouette "Ballerina".
         return shape === "coffin" ? "ballerina" : shape || "oval";
+    }
+
+    // ---------------------------------------------------------------------
+    // SVG SHAPE TEMPLATES
+    // ---------------------------------------------------------------------
+    // These are normalized versions of the SVG files in the project "Shapes"
+    // folder. Each path fits inside a 100x100 coordinate box:
+    // - x = 0 is left, x = 100 is right
+    // - y = 0 is the top/tip, y = 100 is the base/cuticle
+    //
+    // The editor draws these exact paths for BOTH:
+    // - the visible white guide on the photo
+    // - the exported black/white mask sent to Flask/OpenAI
+    //
+    // If you replace a SVG in the Shapes folder later, regenerate/update the
+    // matching path string here.
+    const SVG_SHAPE_TEMPLATES = {
+        oval: "M 100 85.429 L 97.333 26.547 C 97.333 26.547 89.333 2.994 52.444 3.992 C 52.444 3.992 16.444 0 1.778 23.553 L 0.444 85.23 C 0.444 85.23 0 96.208 45.333 100 C 45.333 100 90.895 99.33 100 85.429 Z",
+        squoval: "M 99.623 80.284 L 100 16.696 C 100 16.696 98.113 1.066 64.906 0.178 L 33.962 0 C 33.962 0 0.755 0.888 0 15.631 L 0.377 80.107 C 0.377 80.107 0.755 99.112 46.415 96.448 C 46.415 96.448 95.094 100 99.623 80.284 Z",
+        square: "M 35.178 0.601 L 67.194 0.601 C 67.194 0.601 99.605 0.601 95.652 7.415 L 100 84.168 C 100 84.168 98.814 100 52.964 97.796 C 52.964 97.796 12.253 97.996 1.976 84.77 L 4.743 7.816 C 4.743 7.816 0 0 35.178 0.601 Z",
+        ballerina: "M 29.139 0 C 29.139 0 5.298 19.415 0 80.319 C 0 80.319 8.609 96.809 47.682 99.468 C 47.682 99.468 84.768 100 98.676 79.521 C 98.676 79.521 100 38.564 70.861 0.266 Z",
+        stiletto: "M 95.72 78.793 C 95.72 78.793 100 62.931 92.607 37.759 C 92.607 37.759 85.603 15.345 50.195 0 C 50.195 0 18.288 9.31 5.837 42.069 C 5.837 42.069 0 62.759 4.28 78.621 C 4.28 78.621 5.447 93.966 45.136 98.966 C 45.136 98.966 87.938 100 95.72 78.793 Z",
+        almond: "M 100 81.356 L 99.465 40.436 C 99.465 40.436 93.583 5.811 50.802 2.663 C 50.802 2.663 17.647 0 0.535 37.288 L 0 81.114 C 0 81.114 8.021 97.337 45.455 99.758 C 45.455 99.758 89.305 100 100 81.356 Z",
+    };
+
+    const TEMPLATE_HANDLE_NAMES = ["bottomLeft", "bottomRight", "topLeft", "topRight", "tip"];
+    const parsedSvgShapeTemplates = {};
+
+    function parseSvgPathData(pathData) {
+        const tokens = pathData.match(/[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g) || [];
+        const commands = [];
+        let index = 0;
+        let currentCommand = "";
+
+        function isCommand(token) {
+            return /^[a-zA-Z]$/.test(token);
+        }
+
+        function nextNumber() {
+            return Number(tokens[index++]);
+        }
+
+        while (index < tokens.length) {
+            if (isCommand(tokens[index])) {
+                currentCommand = tokens[index++];
+            }
+
+            if (currentCommand === "Z" || currentCommand === "z") {
+                commands.push({ command: "Z", values: [] });
+                continue;
+            }
+
+            const command = currentCommand.toUpperCase();
+            const valueCount = command === "M" || command === "L" ? 2 : command === "Q" ? 4 : command === "C" ? 6 : 0;
+
+            if (!valueCount) {
+                break;
+            }
+
+            while (index < tokens.length && !isCommand(tokens[index])) {
+                const values = [];
+
+                for (let count = 0; count < valueCount && index < tokens.length; count += 1) {
+                    values.push(nextNumber());
+                }
+
+                commands.push({ command, values });
+
+                if (command === "M") {
+                    currentCommand = "L";
+                }
+            }
+        }
+
+        return commands;
+    }
+
+    function svgShapeCommands(shape) {
+        const shapeName = normalizedShape(shape);
+
+        if (!parsedSvgShapeTemplates[shapeName]) {
+            parsedSvgShapeTemplates[shapeName] = parseSvgPathData(SVG_SHAPE_TEMPLATES[shapeName]);
+        }
+
+        return parsedSvgShapeTemplates[shapeName];
+    }
+
+    function drawParsedSvgCommands(canvasContext, commands) {
+        canvasContext.beginPath();
+
+        commands.forEach((item) => {
+            const v = item.values;
+
+            if (item.command === "M") {
+                canvasContext.moveTo(v[0], v[1]);
+            } else if (item.command === "L") {
+                canvasContext.lineTo(v[0], v[1]);
+            } else if (item.command === "Q") {
+                canvasContext.quadraticCurveTo(v[0], v[1], v[2], v[3]);
+            } else if (item.command === "C") {
+                canvasContext.bezierCurveTo(v[0], v[1], v[2], v[3], v[4], v[5]);
+            } else if (item.command === "Z") {
+                canvasContext.closePath();
+            }
+        });
+    }
+
+    function guideTemplateBox(guide) {
+        const local = guide.localHandles;
+        const minWidth = guideLimits().minWidth;
+        const minHeight = guideLimits().minLength;
+        let left = Math.min(local.bottomLeft.x, local.topLeft.x, local.tip.x);
+        let right = Math.max(local.bottomRight.x, local.topRight.x, local.tip.x);
+        let top = Math.max(local.topLeft.y, local.topRight.y, local.tip.y);
+        let bottom = Math.min(local.bottomLeft.y, local.bottomRight.y);
+
+        if (right - left < minWidth) {
+            const centerX = (left + right) / 2;
+            left = centerX - minWidth / 2;
+            right = centerX + minWidth / 2;
+        }
+
+        if (top - bottom < minHeight) {
+            const centerY = (top + bottom) / 2;
+            top = centerY + minHeight / 2;
+            bottom = centerY - minHeight / 2;
+        }
+
+        return {
+            left,
+            right,
+            top,
+            bottom,
+            width: right - left,
+            height: top - bottom,
+        };
+    }
+
+    function drawSvgTemplateGuidePath(canvasContext, guide) {
+        const commands = svgShapeCommands(guide.shape);
+        const box = guideTemplateBox(guide);
+        const frame = guideFrame(guide);
+        const scaleX = box.width / 100;
+        const scaleY = -box.height / 100;
+        const originX = guide.center.x + box.left * frame.axisWidth.x + box.top * frame.axisLength.x;
+        const originY = guide.center.y + box.left * frame.axisWidth.y + box.top * frame.axisLength.y;
+
+        canvasContext.save();
+        canvasContext.transform(
+            frame.axisWidth.x * scaleX,
+            frame.axisWidth.y * scaleX,
+            frame.axisLength.x * scaleY,
+            frame.axisLength.y * scaleY,
+            originX,
+            originY,
+        );
+        drawParsedSvgCommands(canvasContext, commands);
+        canvasContext.restore();
     }
 
     function shapeTemplate(shape, sharpness) {
@@ -976,13 +1134,8 @@ document.addEventListener("DOMContentLoaded", function () {
         const shape = normalizedShape(guide.shape || "oval");
         const sharpness = clamp(guide.tipRoundness ?? 70, 0, 100) / 100;
 
-        if (shape === "oval") {
-            drawOvalGuidePath(canvasContext, guide);
-            return;
-        }
-
-        if (shape === "squoval") {
-            drawSquovalGuidePath(canvasContext, guide);
+        if (SVG_SHAPE_TEMPLATES[shape]) {
+            drawSvgTemplateGuidePath(canvasContext, guide);
             return;
         }
 
@@ -1133,14 +1286,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function drawHandles(guide) {
         Object.entries(guide.points).forEach(([name, point]) => {
+            if (!TEMPLATE_HANDLE_NAMES.includes(name)) {
+                return;
+            }
+
             const screenPoint = imageToScreen(point);
 
             context.beginPath();
-            context.arc(screenPoint.x, screenPoint.y, name === "sideLeft" || name === "sideRight" ? 5.5 : 6.5, 0, Math.PI * 2);
-            context.fillStyle = name === "sideLeft" || name === "sideRight" ? "rgba(255, 255, 255, 0.54)" : "rgba(255, 255, 255, 0.68)";
+            context.arc(screenPoint.x, screenPoint.y, 6.5, 0, Math.PI * 2);
+            context.fillStyle = "rgba(255, 255, 255, 0.68)";
             context.fill();
             context.lineWidth = 2;
-            context.strokeStyle = name === "sideLeft" || name === "sideRight" ? "rgba(132, 95, 255, 0.7)" : "rgba(225, 45, 92, 0.62)";
+            context.strokeStyle = "rgba(225, 45, 92, 0.62)";
             context.stroke();
         });
     }
@@ -1171,6 +1328,10 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         for (const [name, point] of Object.entries(guide.points)) {
+            if (!TEMPLATE_HANDLE_NAMES.includes(name)) {
+                continue;
+            }
+
             const screenPoint = imageToScreen(point);
 
             if (Math.hypot(screenPoint.x - screenX, screenPoint.y - screenY) <= 24) {
