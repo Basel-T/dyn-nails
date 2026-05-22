@@ -1,0 +1,5 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<svg width="210mm" height="297mm" viewBox="0 0 210 297" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <title>Squoval shape - symmetric from original silhouette</title>
+  <path id="squoval_sym" fill="#000000" d="M 91.64 37.91 L 121.45 37.91 C 144.40 39.25 154.95 51.85 155.68 72.87 L 155.68 204.07 C 153.47 229.75 132.75 241.50 107.28 237.93 C 81.81 241.50 61.09 229.75 58.89 204.07 L 58.52 72.87 C 59.25 51.85 68.69 39.25 91.64 37.91 Z"/>
+</svg>
