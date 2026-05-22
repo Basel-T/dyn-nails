@@ -451,6 +451,33 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    function drawMappedSvgCommands(canvasContext, commands, mapPoint) {
+        canvasContext.beginPath();
+
+        commands.forEach((item) => {
+            const v = item.values;
+
+            if (item.command === "M") {
+                const p = mapPoint(v[0], v[1]);
+                canvasContext.moveTo(p.x, p.y);
+            } else if (item.command === "L") {
+                const p = mapPoint(v[0], v[1]);
+                canvasContext.lineTo(p.x, p.y);
+            } else if (item.command === "Q") {
+                const c = mapPoint(v[0], v[1]);
+                const p = mapPoint(v[2], v[3]);
+                canvasContext.quadraticCurveTo(c.x, c.y, p.x, p.y);
+            } else if (item.command === "C") {
+                const c1 = mapPoint(v[0], v[1]);
+                const c2 = mapPoint(v[2], v[3]);
+                const p = mapPoint(v[4], v[5]);
+                canvasContext.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, p.x, p.y);
+            } else if (item.command === "Z") {
+                canvasContext.closePath();
+            }
+        });
+    }
+
     function templateAnchors(shape) {
         return SVG_TEMPLATE_ANCHORS[normalizedShape(shape)] || SVG_TEMPLATE_ANCHORS.oval;
     }
@@ -534,8 +561,63 @@ document.addEventListener("DOMContentLoaded", function () {
         };
     }
 
+    function interpolatePoint(pointA, pointB, amount) {
+        return {
+            x: pointA.x + (pointB.x - pointA.x) * amount,
+            y: pointA.y + (pointB.y - pointA.y) * amount,
+        };
+    }
+
+    function asymmetricTemplateMapper(guide) {
+        const local = guide.localHandles;
+        const anchors = templateAnchors(guide.shape);
+        const shape = normalizedShape(guide.shape);
+        const flatTopShape = shape === "squoval" || shape === "square" || shape === "ballerina";
+        const topY = (anchors.topLeft.y + anchors.topRight.y) / 2;
+        const bottomY = (anchors.bottomLeft.y + anchors.bottomRight.y) / 2;
+
+        return function mapTemplatePoint(templateX, templateY) {
+            let leftTemplateX;
+            let rightTemplateX;
+            let leftLocal;
+            let rightLocal;
+
+            if (flatTopShape && templateY <= topY) {
+                leftTemplateX = anchors.topLeft.x;
+                rightTemplateX = anchors.topRight.x;
+                leftLocal = local.topLeft;
+                rightLocal = local.topRight;
+            } else if (templateY <= topY) {
+                const amount = clamp(templateY / Math.max(1, topY), 0, 1);
+
+                leftTemplateX = anchors.tip.x + (anchors.topLeft.x - anchors.tip.x) * amount;
+                rightTemplateX = anchors.tip.x + (anchors.topRight.x - anchors.tip.x) * amount;
+                leftLocal = interpolatePoint(local.tip, local.topLeft, amount);
+                rightLocal = interpolatePoint(local.tip, local.topRight, amount);
+            } else {
+                const amount = clamp((templateY - topY) / Math.max(1, bottomY - topY), 0, 1);
+
+                leftTemplateX = anchors.topLeft.x + (anchors.bottomLeft.x - anchors.topLeft.x) * amount;
+                rightTemplateX = anchors.topRight.x + (anchors.bottomRight.x - anchors.topRight.x) * amount;
+                leftLocal = interpolatePoint(local.topLeft, local.bottomLeft, amount);
+                rightLocal = interpolatePoint(local.topRight, local.bottomRight, amount);
+            }
+
+            const across = clamp((templateX - leftTemplateX) / Math.max(1, rightTemplateX - leftTemplateX), 0, 1);
+            const localPoint = interpolatePoint(leftLocal, rightLocal, across);
+
+            return localToImage(guide, localPoint.x, localPoint.y);
+        };
+    }
+
     function drawSvgTemplateGuidePath(canvasContext, guide) {
         const commands = svgShapeCommands(guide.shape);
+
+        if (!symmetryEnabled) {
+            drawMappedSvgCommands(canvasContext, commands, asymmetricTemplateMapper(guide));
+            return;
+        }
+
         const box = guideTemplateBox(guide);
         const frame = guideFrame(guide);
         const scaleX = box.width / 100;
@@ -775,6 +857,13 @@ document.addEventListener("DOMContentLoaded", function () {
     // drawHandles() uses guide.points, so this controls where the visible dots
     // appear on the canvas.
     function updateGuidePoints(guide) {
+        if (!symmetryEnabled) {
+            guide.points = Object.fromEntries(
+                TEMPLATE_HANDLE_NAMES.map((name) => [name, localToImage(guide, guide.localHandles[name].x, guide.localHandles[name].y)]),
+            );
+            return;
+        }
+
         const anchors = templateAnchors(guide.shape);
         const box = guideTemplateBox(guide);
 
@@ -1626,7 +1715,7 @@ document.addEventListener("DOMContentLoaded", function () {
         // The tip must stay visually beyond the line between top-left/top-right.
         const shapeName = normalizedShape(guide.shape);
 
-        if (shapeName === "oval" || shapeName === "almond" || shapeName === "stiletto") {
+        if (handleName === "tip" && (shapeName === "oval" || shapeName === "almond" || shapeName === "stiletto")) {
             const topLineY = Math.max(local.topLeft.y, local.topRight.y);
             const minBulge = shapeName === "stiletto" ? guide.length * 0.14 : shapeName === "almond" ? guide.length * 0.07 : guide.length * 0.035;
 
@@ -1645,14 +1734,15 @@ document.addEventListener("DOMContentLoaded", function () {
     function toggleSymmetry() {
         rememberUndoState();
         symmetryEnabled = !symmetryEnabled;
-        updateSymmetryButton();
-
         const guide = selectedGuide();
 
         if (symmetryEnabled && guide) {
             symmetrizeGuide(guide);
-            render();
+        } else if (guide) {
+            updateGuidePoints(guide);
         }
+
+        updateSymmetryButton();
     }
 
     function enterTapNextNailMode() {
