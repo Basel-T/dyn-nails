@@ -14,7 +14,7 @@ import {
   undo,
   BrushState,
   setFinishType,
-  COLOR_PALETTE,
+  buildColorSwatches,
 } from './nail-canvas.js';
 
 import {
@@ -209,26 +209,6 @@ function loadPhotoFile(file) {
     img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
-}
-
-// ─── Build color swatches for active category ─────────────────────────
-function buildColorSwatches(cat) {
-  const container = document.getElementById('color-swatches');
-  if (!container) return;
-  container.innerHTML = '';
-  (COLOR_PALETTE[cat] || []).forEach((color) => {
-    const btn = document.createElement('button');
-    btn.className = 'swatch';
-    btn.style.background = color;
-    btn.dataset.color    = color;
-    btn.setAttribute('aria-label', color);
-    btn.addEventListener('click', () => {
-      container.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
-      btn.classList.add('selected');
-      applyFill(color);
-    });
-    container.appendChild(btn);
-  });
 }
 
 // ─── Wire up all events ───────────────────────────────────────────────
