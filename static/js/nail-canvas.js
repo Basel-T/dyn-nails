@@ -1,13 +1,12 @@
 /**
- * nail-canvas.js
- * Manages the 5 per-finger flat nail design canvases in Step 3.
+ * nail-canvas.js — Flat per-finger nail design canvases.
  *
- * Exports: initNailCanvases, setActiveNail, applyFill, applyGradient,
- *          startBrush, brushTo, endBrush, applyEraser, applyPreset,
- *          applyToAllNails, undo, exportDesignImages, NAIL_SHAPES
+ * Each of the 5 nail canvases is 200×280px (internal resolution).
+ * The active nail is shown larger; thumbnails show smaller previews via CSS.
+ * All drawing is clipped to the nail shape — paint cannot bleed outside.
  */
 
-// ─── Nail shape paths (100×100 box, y=0 tip, y=100 cuticle) ──────────
+// ─── Nail shape SVG paths (100×100 box, y=0 tip, y=100 cuticle) ──────
 export const NAIL_SHAPES = {
   round:    "M50,4 C74,4 96,20 96,44 L96,78 C92,92 74,100 50,100 C26,100 8,92 4,78 L4,44 C4,20 26,4 50,4 Z",
   oval:     "M50,0 C72,0 94,14 96,38 L96,78 C92,92 72,100 50,100 C28,100 8,92 4,78 L4,38 C6,14 28,0 50,0 Z",
@@ -19,109 +18,173 @@ export const NAIL_SHAPES = {
   lipstick: "M6,2 L94,16 C97,24 97,50 96,70 L96,80 C92,92 70,100 50,100 C30,100 8,92 4,80 L4,70 C3,50 4,26 6,2 Z",
 };
 
-// ─── Internal state ───────────────────────────────────────────────────
-const FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
-let nailCanvases = {};      // { finger: { canvas, ctx, undoStack } }
-let activeNailEl = null;    // large editing <canvas>
-let activeCtx = null;
-let activeNailCanvas = null; // the data canvas for the active finger
-let activeFingerName = 'thumb';
-let currentShape = 'oval';
-let isPainting = false;
-let lastPt = { x: 0, y: 0 };
+// ─── Professional nail polish color palette (by category) ────────────
+export const COLOR_PALETTE = {
+  pinks: [
+    '#F9DDE4','#F4B8CB','#EE8FAE','#E56B93','#D44A7C',
+    '#C4778A','#A85070','#8B3556','#FFD4E4','#FFA8C0',
+    '#FF7BA8','#E0558E',
+  ],
+  reds: [
+    '#FF4455','#E8192A','#C40A18','#8B0000','#FF6B6B',
+    '#F04040','#CC2233','#991122','#FF9999','#FF3344',
+    '#D41E2D','#B01020',
+  ],
+  bold: [
+    '#1A1A1A','#2D2030','#4A1060','#7A2080','#AA44BB',
+    '#3355CC','#1122AA','#001466','#226644','#003322',
+    '#888888','#CCCCCC',
+  ],
+  nudes: [
+    '#F9EDE8','#F4DDD0','#ECCFC0','#E0BA9E','#D4A882',
+    '#C89468','#BC8055','#A06840','#FFF0EA','#FFE4D4',
+    '#F5D0BC','#ECC0A8',
+  ],
+};
 
-// current brush settings (updated by wizard.js)
+// ─── State ────────────────────────────────────────────────────────────
+const FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
+
+let nailCanvases = {}; // { finger: { canvas, ctx, undoStack } }
+let activeNailEl   = null; // <canvas id="active-nail-canvas">
+let activeCtx      = null;
+let activeFingerName = 'thumb';
+let currentShape   = 'oval';
+let currentCat     = 'pinks';
+let isPainting     = false;
+let lastPt         = { x: 0, y: 0 };
+
+export let finishType = 'glossy'; // exported for generator
+
 export const BrushState = {
   size: 8,
   opacity: 1.0,
-  color: '#C4778A',
+  color: '#E8B4BC',
   eraserSize: 20,
 };
 
-// ─── Build clip path in canvas pixel coords ───────────────────────────
+// ─── Clip path in canvas pixel space ─────────────────────────────────
 function getNailClipPath(shapeName, W, H) {
   const transform = new DOMMatrix([W / 100, 0, 0, H / 100, 0, 0]);
-  const base = new Path2D(NAIL_SHAPES[shapeName] || NAIL_SHAPES.oval);
+  const base   = new Path2D(NAIL_SHAPES[shapeName] || NAIL_SHAPES.oval);
   const result = new Path2D();
   result.addPath(base, transform);
   return result;
 }
 
-// Draw the initial background of a nail canvas (transparent nail shape area)
-function paintNailBase(ctx, shapeName, W, H) {
+// Paint default warm pink base inside nail shape
+function paintDefaultBase(ctx, shapeName, W, H) {
   ctx.clearRect(0, 0, W, H);
   ctx.save();
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  ctx.fill(getNailClipPath(shapeName, W, H));
+  ctx.clip(getNailClipPath(shapeName, W, H));
+  ctx.fillStyle = '#F5D0BC'; // warm nude — gives the AI a starting point
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
 
-// ─── Public: init all 5 nail canvases ─────────────────────────────────
+// ─── Public: initialize all 5 nail canvases ──────────────────────────
 export function initNailCanvases(shapeName) {
   currentShape = shapeName || 'oval';
   activeNailEl = document.getElementById('active-nail-canvas');
-  activeCtx = activeNailEl.getContext('2d');
+  activeCtx    = activeNailEl.getContext('2d');
 
   FINGERS.forEach((finger) => {
     const canvas = document.querySelector(`.nail-thumb-canvas[data-finger="${finger}"]`);
-    const ctx = canvas.getContext('2d');
+    const ctx    = canvas.getContext('2d');
     nailCanvases[finger] = { canvas, ctx, undoStack: [] };
-    paintNailBase(ctx, currentShape, canvas.width, canvas.height);
+    paintDefaultBase(ctx, currentShape, canvas.width, canvas.height);
   });
 
-  // Set up active canvas drawing events
+  // Active canvas touch/pointer events
   activeNailEl.addEventListener('pointerdown', onBrushDown, { passive: false });
   activeNailEl.addEventListener('pointermove', onBrushMove, { passive: false });
-  activeNailEl.addEventListener('pointerup', onBrushUp);
-  activeNailEl.addEventListener('pointerleave', onBrushUp);
+  activeNailEl.addEventListener('pointerup',   onBrushUp);
+  activeNailEl.addEventListener('pointerleave',onBrushUp);
   activeNailEl.style.touchAction = 'none';
+
+  // Size active canvas to fill its wrapper
+  sizeActiveCanvas();
+  window.addEventListener('resize', sizeActiveCanvas);
+
+  // Build color swatches
+  buildColorSwatches(currentCat);
 
   setActiveNail('thumb');
 }
 
-// ─── Public: update shape (re-render all thumbnails) ──────────────────
-export function updateShape(shapeName) {
-  currentShape = shapeName;
-  FINGERS.forEach((finger) => {
-    const { canvas, ctx } = nailCanvases[finger];
-    // Re-draw with new clip (existing design will be clipped to new shape)
-    // For simplicity, we clear and re-apply base — user's design is reset when shape changes
-    paintNailBase(ctx, currentShape, canvas.width, canvas.height);
-  });
-  syncActiveFromData();
+function sizeActiveCanvas() {
+  const wrap = document.querySelector('.active-nail-wrap');
+  if (!wrap) return;
+  const maxH = Math.min(wrap.clientHeight, 210);
+  const h    = Math.max(90, maxH);
+  const w    = Math.round(h * (200 / 280)); // maintain 5:7 aspect ratio
+  activeNailEl.style.width  = w + 'px';
+  activeNailEl.style.height = h + 'px';
 }
 
-// ─── Public: set the active finger for editing ────────────────────────
+// ─── Build color swatches for the active category ────────────────────
+export function buildColorSwatches(cat) {
+  currentCat = cat;
+  const container = document.getElementById('color-swatches');
+  if (!container) return;
+  container.innerHTML = '';
+
+  (COLOR_PALETTE[cat] || []).forEach((hex) => {
+    const btn = document.createElement('button');
+    btn.className = 'swatch';
+    btn.dataset.color = hex;
+    btn.style.background = hex;
+    btn.title = hex;
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
+      btn.classList.add('selected');
+      applyFill(hex);
+    });
+    container.appendChild(btn);
+  });
+
+  // Custom color picker swatch
+  const custom = document.createElement('button');
+  custom.className = 'swatch swatch-custom';
+  custom.title = 'Custom color';
+  const picker = document.createElement('input');
+  picker.type = 'color';
+  picker.value = '#FFFFFF';
+  picker.addEventListener('change', () => {
+    container.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
+    custom.classList.add('selected');
+    applyFill(picker.value);
+  });
+  custom.appendChild(picker);
+  container.appendChild(custom);
+}
+
+// ─── Switch active nail ───────────────────────────────────────────────
 export function setActiveNail(finger) {
   if (!nailCanvases[finger]) return;
   activeFingerName = finger;
-  activeNailCanvas = nailCanvases[finger].canvas;
   syncActiveFromData();
 
-  // Update UI highlights
-  document.querySelectorAll('.nail-thumb-wrap').forEach((wrap) => {
-    wrap.classList.toggle('active', wrap.dataset.finger === finger);
+  document.querySelectorAll('.nail-thumb-wrap').forEach((w) => {
+    w.classList.toggle('active', w.dataset.finger === finger);
   });
 }
 
-// Copy data canvas → active editing canvas
 function syncActiveFromData() {
-  if (!activeCtx || !activeNailCanvas) return;
+  if (!activeCtx) return;
   const W = activeNailEl.width;
   const H = activeNailEl.height;
   activeCtx.clearRect(0, 0, W, H);
-  activeCtx.drawImage(activeNailCanvas, 0, 0, W, H);
+  activeCtx.drawImage(nailCanvases[activeFingerName].canvas, 0, 0, W, H);
 }
 
-// Copy active editing canvas → data canvas (and thumbnail)
 function syncDataFromActive() {
-  if (!activeNailCanvas) return;
   const { ctx, canvas } = nailCanvases[activeFingerName];
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(activeNailEl, 0, 0, canvas.width, canvas.height);
 }
 
-// ─── Undo stack helpers ───────────────────────────────────────────────
+// ─── Undo ─────────────────────────────────────────────────────────────
 function pushUndo(finger) {
   const { canvas, ctx, undoStack } = nailCanvases[finger || activeFingerName];
   if (undoStack.length >= 20) undoStack.shift();
@@ -135,69 +198,37 @@ export function undo() {
   syncActiveFromData();
 }
 
-// ─── Map pointer event coords → canvas coords ─────────────────────────
+// ─── Coordinate mapping ───────────────────────────────────────────────
 function getCoords(canvas, e) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: (e.clientX - rect.left) * (canvas.width / rect.width),
-    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    x: (e.clientX - rect.left) * (canvas.width  / rect.width),
+    y: (e.clientY - rect.top)  * (canvas.height / rect.height),
   };
 }
 
-// ─── Brush / eraser pointer handlers ─────────────────────────────────
-function currentToolType() {
-  const activeTab = document.querySelector('.tool-tab.active');
-  return activeTab ? activeTab.dataset.tool : 'fill';
+function activeTool() {
+  return document.querySelector('.tool-tab.active')?.dataset.tool || 'fill';
 }
 
+// ─── Brush / eraser drawing ───────────────────────────────────────────
 function onBrushDown(e) {
-  const tool = currentToolType();
+  const tool = activeTool();
   if (tool !== 'brush' && tool !== 'eraser') return;
   e.preventDefault();
   isPainting = true;
   lastPt = getCoords(activeNailEl, e);
   pushUndo();
-  const W = activeNailEl.width;
-  const H = activeNailEl.height;
-
-  // Draw a dot at the starting point
-  activeCtx.save();
-  activeCtx.clip(getNailClipPath(currentShape, W, H));
-  if (tool === 'eraser') {
-    activeCtx.globalCompositeOperation = 'destination-out';
-    activeCtx.fillStyle = 'rgba(0,0,0,1)';
-    drawCircle(activeCtx, lastPt.x, lastPt.y, BrushState.eraserSize / 2);
-  } else {
-    activeCtx.globalCompositeOperation = 'source-over';
-    activeCtx.globalAlpha = BrushState.opacity;
-    activeCtx.fillStyle = BrushState.color;
-    drawCircle(activeCtx, lastPt.x, lastPt.y, BrushState.size / 2);
-  }
-  activeCtx.restore();
+  _drawDot(lastPt, tool);
 }
 
 function onBrushMove(e) {
   if (!isPainting) return;
-  const tool = currentToolType();
+  const tool = activeTool();
   if (tool !== 'brush' && tool !== 'eraser') return;
   e.preventDefault();
-
   const pt = getCoords(activeNailEl, e);
-  const W = activeNailEl.width;
-  const H = activeNailEl.height;
-
-  activeCtx.save();
-  activeCtx.clip(getNailClipPath(currentShape, W, H));
-
-  if (tool === 'eraser') {
-    activeCtx.globalCompositeOperation = 'destination-out';
-    drawStroke(activeCtx, lastPt, pt, BrushState.eraserSize, 'rgba(0,0,0,1)', 1.0);
-  } else {
-    activeCtx.globalCompositeOperation = 'source-over';
-    drawStroke(activeCtx, lastPt, pt, BrushState.size, BrushState.color, BrushState.opacity);
-  }
-  activeCtx.restore();
-
+  _drawStroke(lastPt, pt, tool);
   lastPt = pt;
 }
 
@@ -207,36 +238,70 @@ function onBrushUp() {
   syncDataFromActive();
 }
 
-function drawCircle(ctx, x, y, r) {
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fill();
+function _withClip(drawFn) {
+  activeCtx.save();
+  activeCtx.clip(getNailClipPath(currentShape, activeNailEl.width, activeNailEl.height));
+  drawFn();
+  activeCtx.restore();
 }
 
-function drawStroke(ctx, from, to, width, color, opacity) {
-  ctx.beginPath();
-  ctx.moveTo(from.x, from.y);
-  ctx.lineTo(to.x, to.y);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.globalAlpha = opacity;
-  ctx.stroke();
+function _drawDot(pt, tool) {
+  _withClip(() => {
+    if (tool === 'eraser') {
+      activeCtx.globalCompositeOperation = 'destination-out';
+      activeCtx.beginPath();
+      activeCtx.arc(pt.x, pt.y, BrushState.eraserSize / 2, 0, Math.PI * 2);
+      activeCtx.fillStyle = 'rgba(0,0,0,1)';
+      activeCtx.fill();
+      activeCtx.globalCompositeOperation = 'source-over';
+    } else {
+      activeCtx.globalAlpha = BrushState.opacity;
+      activeCtx.fillStyle = BrushState.color;
+      activeCtx.beginPath();
+      activeCtx.arc(pt.x, pt.y, BrushState.size / 2, 0, Math.PI * 2);
+      activeCtx.fill();
+      activeCtx.globalAlpha = 1;
+    }
+  });
 }
 
-// ─── Public: fill tools ───────────────────────────────────────────────
+function _drawStroke(from, to, tool) {
+  _withClip(() => {
+    if (tool === 'eraser') {
+      activeCtx.globalCompositeOperation = 'destination-out';
+      activeCtx.beginPath();
+      activeCtx.moveTo(from.x, from.y);
+      activeCtx.lineTo(to.x, to.y);
+      activeCtx.strokeStyle = 'rgba(0,0,0,1)';
+      activeCtx.lineWidth = BrushState.eraserSize;
+      activeCtx.lineCap = 'round';
+      activeCtx.stroke();
+      activeCtx.globalCompositeOperation = 'source-over';
+    } else {
+      activeCtx.globalAlpha = BrushState.opacity;
+      activeCtx.beginPath();
+      activeCtx.moveTo(from.x, from.y);
+      activeCtx.lineTo(to.x, to.y);
+      activeCtx.strokeStyle = BrushState.color;
+      activeCtx.lineWidth = BrushState.size;
+      activeCtx.lineCap = 'round';
+      activeCtx.lineJoin = 'round';
+      activeCtx.stroke();
+      activeCtx.globalAlpha = 1;
+    }
+  });
+}
+
+// ─── Fill, Gradient, Presets ──────────────────────────────────────────
 export function applyFill(color, finger) {
   const f = finger || activeFingerName;
   const { canvas, ctx } = nailCanvases[f];
   pushUndo(f);
-  const W = canvas.width;
-  const H = canvas.height;
   ctx.save();
-  ctx.clip(getNailClipPath(currentShape, W, H));
-  ctx.clearRect(0, 0, W, H);
+  ctx.clip(getNailClipPath(currentShape, canvas.width, canvas.height));
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = color;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
   if (f === activeFingerName) syncActiveFromData();
 }
@@ -244,17 +309,14 @@ export function applyFill(color, finger) {
 export function applyGradient(color1, color2, direction, finger) {
   const f = finger || activeFingerName;
   const { canvas, ctx } = nailCanvases[f];
+  const W = canvas.width, H = canvas.height;
   pushUndo(f);
-  const W = canvas.width;
-  const H = canvas.height;
 
   let grad;
-  if (direction === 'horizontal') {
-    grad = ctx.createLinearGradient(0, 0, W, 0);
-  } else if (direction === 'diagonal') {
-    grad = ctx.createLinearGradient(0, 0, W, H);
-  } else {
-    grad = ctx.createLinearGradient(0, 0, 0, H); // vertical
+  switch (direction) {
+    case 'horizontal': grad = ctx.createLinearGradient(0, 0, W, 0); break;
+    case 'diagonal':   grad = ctx.createLinearGradient(0, 0, W, H); break;
+    default:           grad = ctx.createLinearGradient(0, 0, 0, H);
   }
   grad.addColorStop(0, color1);
   grad.addColorStop(1, color2);
@@ -268,12 +330,10 @@ export function applyGradient(color1, color2, direction, finger) {
   if (f === activeFingerName) syncActiveFromData();
 }
 
-// ─── Public: preset designs ───────────────────────────────────────────
 export function applyPreset(presetName, finger) {
   const f = finger || activeFingerName;
   const { canvas, ctx } = nailCanvases[f];
-  const W = canvas.width;
-  const H = canvas.height;
+  const W = canvas.width, H = canvas.height;
   pushUndo(f);
 
   ctx.save();
@@ -281,118 +341,93 @@ export function applyPreset(presetName, finger) {
   ctx.clearRect(0, 0, W, H);
 
   switch (presetName) {
-    case 'french': {
-      // Pink base
-      ctx.fillStyle = '#F5E6E8';
-      ctx.fillRect(0, 0, W, H);
-      // White tip (top 20% of nail)
-      const tipH = H * 0.20;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, W, tipH);
+    case 'french':
+      ctx.fillStyle = '#F5E6E8'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H * 0.22);
       break;
-    }
     case 'ombre-pink': {
-      const grad = ctx.createLinearGradient(0, 0, 0, H);
-      grad.addColorStop(0, '#E8B4BC');
-      grad.addColorStop(1, '#C4778A');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, W, H);
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#E8B4BC'); g.addColorStop(1, '#C4778A');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       break;
     }
-    case 'red': {
-      ctx.fillStyle = '#A0293C';
-      ctx.fillRect(0, 0, W, H);
-      break;
-    }
-    case 'nude': {
-      ctx.fillStyle = '#E8D5B0';
-      ctx.fillRect(0, 0, W, H);
-      break;
-    }
-    case 'black': {
-      ctx.fillStyle = '#1A1A1A';
-      ctx.fillRect(0, 0, W, H);
-      break;
-    }
+    case 'red':   ctx.fillStyle = '#A0293C'; ctx.fillRect(0, 0, W, H); break;
+    case 'nude':  ctx.fillStyle = '#E8D5B0'; ctx.fillRect(0, 0, W, H); break;
+    case 'black': ctx.fillStyle = '#1A1A1A'; ctx.fillRect(0, 0, W, H); break;
     case 'milky': {
-      const grad2 = ctx.createLinearGradient(0, 0, 0, H);
-      grad2.addColorStop(0, '#FAFAFA');
-      grad2.addColorStop(1, '#F0E8EC');
-      ctx.fillStyle = grad2;
-      ctx.fillRect(0, 0, W, H);
+      const g2 = ctx.createLinearGradient(0, 0, 0, H);
+      g2.addColorStop(0, '#FAFAFA'); g2.addColorStop(1, '#F0E8EC');
+      ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H);
       break;
     }
-    default: {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, W, H);
-    }
+    default: ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
   }
   ctx.restore();
   if (f === activeFingerName) syncActiveFromData();
 }
 
-// ─── Public: apply active nail design to all nails ────────────────────
+// ─── Apply to all nails ───────────────────────────────────────────────
 export function applyToAllNails() {
   const src = nailCanvases[activeFingerName];
-  const srcData = src.ctx.getImageData(0, 0, src.canvas.width, src.canvas.height);
-  FINGERS.forEach((finger) => {
-    if (finger === activeFingerName) return;
-    const { canvas, ctx, undoStack } = nailCanvases[finger];
+  const data = src.ctx.getImageData(0, 0, src.canvas.width, src.canvas.height);
+  FINGERS.forEach((f) => {
+    if (f === activeFingerName) return;
+    const { canvas, ctx, undoStack } = nailCanvases[f];
     if (undoStack.length >= 20) undoStack.shift();
     undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-    ctx.putImageData(srcData, 0, 0);
+    ctx.putImageData(data, 0, 0);
   });
 }
 
-// ─── Public: export all nail canvases as data URLs ────────────────────
+// ─── Set finish type ──────────────────────────────────────────────────
+export function setFinishType(type) { finishType = type; }
+
+// ─── Export design canvases ───────────────────────────────────────────
 export function exportDesignImages() {
-  return FINGERS.map((finger) => ({
-    finger,
-    dataUrl: nailCanvases[finger].canvas.toDataURL('image/png'),
+  return FINGERS.map((f) => ({
+    finger:  f,
+    dataUrl: nailCanvases[f].canvas.toDataURL('image/png'),
   }));
 }
 
-// ─── Public: extract a text description of all nail designs ──────────
+// ─── Build text description of designs ───────────────────────────────
 export function buildDesignDescription() {
-  const descriptions = FINGERS.map((finger) => {
-    const { canvas, ctx } = nailCanvases[finger];
-    const W = canvas.width;
-    const H = canvas.height;
+  const FINISH_DESCS = {
+    glossy:  'high-shine glossy gel',
+    matte:   'flat matte',
+    shimmer: 'pearlescent shimmer',
+    chrome:  'reflective chrome mirror',
+    glitter: 'sparkling glitter',
+  };
+  const finishDesc = FINISH_DESCS[finishType] || 'glossy gel';
 
-    // Sample dominant color of the whole nail
-    const allData = ctx.getImageData(W / 4, H / 8, W / 2, (H * 6) / 8);
-    const base = getDominantHex(allData);
-
-    // Sample top portion to detect French tip (white tip)
-    const tipData = ctx.getImageData(W / 4, H / 16, W / 2, H / 6);
-    const tipColor = getDominantHex(tipData);
-
-    const isFrench = isWhitish(tipColor) && !isWhitish(base);
-    const suffix = isFrench ? ', white French tip' : '';
-    return `${finger} nail: ${base}${suffix}`;
+  const nailDescs = FINGERS.map((f) => {
+    const { canvas, ctx } = nailCanvases[f];
+    const W = canvas.width, H = canvas.height;
+    const base = dominantHex(ctx.getImageData(W * 0.2, H * 0.1, W * 0.6, H * 0.7));
+    const tip  = dominantHex(ctx.getImageData(W * 0.2, 0,       W * 0.6, H * 0.18));
+    const isFrench = isWhitish(tip) && !isWhitish(base);
+    return isFrench ? `${f}:${base}+white-tip` : `${f}:${base}`;
   });
 
-  return descriptions.join('; ');
+  return `${finishDesc} finish; colors: ${nailDescs.join(', ')}`;
 }
 
-function getDominantHex(imageData) {
-  const data = imageData.data;
-  let r = 0, g = 0, b = 0, count = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 64) continue; // skip transparent
-    r += data[i];
-    g += data[i + 1];
-    b += data[i + 2];
-    count++;
+function dominantHex(imageData) {
+  const d = imageData.data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 60) continue;
+    r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
   }
-  if (!count) return '#FFFFFF';
-  const toHex = (v) => Math.round(v / count).toString(16).padStart(2, '0');
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  if (!n) return '#F5D0BC';
+  const h = (v) => Math.round(v / n).toString(16).padStart(2, '0');
+  return `#${h(r)}${h(g)}${h(b)}`;
 }
 
 function isWhitish(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  return r > 220 && g > 220 && b > 220;
+  return r > 215 && g > 215 && b > 215;
 }

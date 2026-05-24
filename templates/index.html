@@ -30,22 +30,31 @@
       <div class="step-content">
         <div class="step-headline">
           <h1>Your nails,<br/>reimagined.</h1>
-          <p class="step-sub">Upload a photo of your hand to get started</p>
+          <p class="step-sub">Upload a clear photo of your hand</p>
         </div>
 
-        <div class="upload-zone" id="upload-zone" role="button" tabindex="0">
-          <div class="upload-icon">📷</div>
-          <p class="upload-label">Tap to upload or take a photo</p>
-          <p class="upload-hint">JPG, PNG or WEBP &bull; front of hand works best</p>
-          <input type="file" id="photo-input" accept="image/*" capture="environment" hidden />
+        <!-- Upload options (shown when no photo) -->
+        <div class="upload-options" id="upload-options">
+          <button class="upload-option-btn primary-upload" id="gallery-btn">
+            <span class="upload-opt-icon">🖼</span>
+            <span>Upload from Gallery</span>
+          </button>
+          <button class="upload-option-btn" id="camera-btn">
+            <span class="upload-opt-icon">📷</span>
+            <span>Take a Photo</span>
+          </button>
+          <input type="file" id="gallery-input" accept="image/*" hidden />
+          <input type="file" id="camera-input" accept="image/*" capture="environment" hidden />
+          <p class="upload-hint">Best results: hand flat, fingers spread, good lighting</p>
         </div>
 
+        <!-- Photo preview (shown after upload, no labels) -->
         <div class="preview-wrap" id="preview-wrap" hidden>
-          <img id="upload-preview" class="upload-preview" alt="Your hand photo" />
-          <button class="change-btn" id="change-photo-btn">Change photo</button>
+          <img id="upload-preview" class="upload-preview" alt="" />
+          <button class="change-btn" id="change-photo-btn">Change</button>
         </div>
 
-        <button class="btn-primary" id="step1-next" disabled>Continue →</button>
+        <button class="btn-primary" id="step1-next" disabled>Continue &#8594;</button>
       </div>
     </section>
 
@@ -53,50 +62,95 @@
     <section id="step-2" class="step">
       <div class="step-content">
         <div class="step-headline">
-          <h2>Position your nails</h2>
-          <p class="step-sub">Drag the dots to fine-tune each nail</p>
+          <h2>Position nails</h2>
+          <p class="step-sub">Pinch to zoom &bull; drag dots to adjust</p>
         </div>
 
-        <!-- Photo + overlay canvas -->
-        <div class="photo-overlay-wrap" id="photo-overlay-wrap">
-          <img id="detection-photo" class="detection-photo" alt="Hand photo" />
-          <canvas id="overlay-canvas" class="overlay-canvas"></canvas>
-          <div class="detect-status" id="detect-status">
+        <!-- Zoomable photo with nail overlays -->
+        <div class="photo-viewport" id="photo-viewport">
+          <div class="photo-scene" id="photo-scene">
+            <img id="detection-photo" class="detection-photo" alt="" />
+            <canvas id="overlay-canvas" class="overlay-canvas"></canvas>
+          </div>
+          <div class="detect-status hidden" id="detect-status">
             <span class="detect-spinner"></span> Detecting nails&hellip;
           </div>
         </div>
 
-        <button class="btn-ghost btn-sm" id="redetect-btn" style="margin-top:8px">&#8635; Re-detect</button>
+        <!-- Zoom controls -->
+        <div class="zoom-bar">
+          <button class="zoom-btn" id="zoom-out-btn" aria-label="Zoom out">&#8722;</button>
+          <span class="zoom-label" id="zoom-level-text">1&times;</span>
+          <button class="zoom-btn" id="zoom-in-btn" aria-label="Zoom in">&#43;</button>
+          <button class="zoom-btn zoom-reset" id="zoom-reset-btn" aria-label="Reset zoom">&#8635; Reset</button>
+          <button class="btn-ghost btn-xs" id="redetect-btn">Re-detect</button>
+        </div>
 
-        <!-- Shape selector -->
+        <!-- Shape selector with SVG previews -->
         <div class="control-group">
           <label class="control-label">Shape</label>
           <div class="shape-grid" id="shape-grid">
-            <button class="shape-btn active" data-shape="oval">Oval</button>
-            <button class="shape-btn" data-shape="round">Round</button>
-            <button class="shape-btn" data-shape="square">Square</button>
-            <button class="shape-btn" data-shape="squoval">Squoval</button>
-            <button class="shape-btn" data-shape="almond">Almond</button>
-            <button class="shape-btn" data-shape="stiletto">Stiletto</button>
-            <button class="shape-btn" data-shape="ballerina">Ballerina</button>
-            <button class="shape-btn" data-shape="lipstick">Lipstick</button>
+
+            <button class="shape-btn active" data-shape="oval">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M10,0 C15,0 19,4 19,10 L19,20 C18,25 15,28 10,28 C5,28 2,25 1,20 L1,10 C1,4 5,0 10,0 Z" fill="currentColor"/></svg>
+              <span>Oval</span>
+            </button>
+
+            <button class="shape-btn" data-shape="round">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M10,3 C15,3 18,6 18,11 L18,20 C17,25 14,28 10,28 C6,28 3,25 2,20 L2,11 C2,6 5,3 10,3 Z" fill="currentColor"/></svg>
+              <span>Round</span>
+            </button>
+
+            <button class="shape-btn" data-shape="square">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M3,2 L17,2 L17,20 C16,25 13,28 10,28 C7,28 4,25 3,20 Z" fill="currentColor"/></svg>
+              <span>Square</span>
+            </button>
+
+            <button class="shape-btn" data-shape="squoval">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M5,2 L15,2 C17,2 18,4 18,6 L18,20 C17,25 13,28 10,28 C7,28 3,25 2,20 L2,6 C2,4 3,2 5,2 Z" fill="currentColor"/></svg>
+              <span>Squoval</span>
+            </button>
+
+            <button class="shape-btn" data-shape="almond">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M10,0 C14,2 18,8 18,14 L18,20 C17,25 14,28 10,28 C6,28 3,25 2,20 L2,14 C2,8 6,2 10,0 Z" fill="currentColor"/></svg>
+              <span>Almond</span>
+            </button>
+
+            <button class="shape-btn" data-shape="stiletto">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M10,0 C13,5 17,13 18,20 L18,22 C17,26 14,28 10,28 C6,28 3,26 2,22 L2,20 C3,13 7,5 10,0 Z" fill="currentColor"/></svg>
+              <span>Stiletto</span>
+            </button>
+
+            <button class="shape-btn" data-shape="ballerina">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M5,2 L15,2 C17,8 19,16 19,22 L19,24 C18,26 14,28 10,28 C6,28 2,26 1,24 L1,22 C1,16 3,8 5,2 Z" fill="currentColor"/></svg>
+              <span>Ballerina</span>
+            </button>
+
+            <button class="shape-btn" data-shape="lipstick">
+              <svg class="shape-icon" viewBox="0 0 20 28"><path d="M2,2 L18,6 C19,10 19,16 18,22 L18,24 C17,26 14,28 10,28 C6,28 2,26 2,24 L2,22 C2,16 2,10 2,2 Z" fill="currentColor"/></svg>
+              <span>Lipstick</span>
+            </button>
+
           </div>
         </div>
 
-        <!-- Length selector -->
+        <!-- Length slider -->
         <div class="control-group">
-          <label class="control-label">Length</label>
-          <div class="length-options">
-            <button class="length-btn" data-length="short">Short</button>
-            <button class="length-btn active" data-length="medium">Medium</button>
-            <button class="length-btn" data-length="long">Long</button>
-          </div>
+          <label class="control-label">Length &nbsp;<span id="length-val">Medium</span></label>
+          <input type="range" id="length-slider" class="slider" min="1" max="3" step="1" value="2" />
+          <div class="slider-labels"><span>Short</span><span>Medium</span><span>Long</span></div>
         </div>
 
-        <!-- Size slider -->
+        <!-- Width (size) slider -->
         <div class="control-group">
           <label class="control-label">Width &nbsp;<span id="size-val">100%</span></label>
           <input type="range" id="size-slider" class="slider" min="60" max="140" value="100" />
+        </div>
+
+        <!-- Rotation slider -->
+        <div class="control-group">
+          <label class="control-label">Rotation &nbsp;<span id="rotation-val">0&deg;</span></label>
+          <input type="range" id="rotation-slider" class="slider" min="-45" max="45" value="0" />
         </div>
 
         <div class="step-nav">
@@ -107,12 +161,7 @@
     </section>
 
     <!-- ── Step 3: Design Studio ──────────────────────────── -->
-    <section id="step-3" class="step">
-      <div class="step-content">
-        <div class="step-headline">
-          <h2>Design studio</h2>
-          <p class="step-sub">Tap a nail to edit &bull; use tools below to paint</p>
-        </div>
+    <section id="step-3" class="step step-studio">
 
         <!-- Nail thumbnail row -->
         <div class="nail-thumb-row" id="nail-thumb-row">
@@ -143,80 +192,81 @@
           <canvas id="active-nail-canvas" width="200" height="280"></canvas>
         </div>
 
+        <!-- Finish type -->
+        <div class="finish-row" id="finish-row">
+          <button class="finish-btn active" data-finish="glossy">Glossy</button>
+          <button class="finish-btn" data-finish="matte">Matte</button>
+          <button class="finish-btn" data-finish="shimmer">Shimmer</button>
+          <button class="finish-btn" data-finish="chrome">Chrome</button>
+          <button class="finish-btn" data-finish="glitter">Glitter</button>
+        </div>
+
         <!-- Tool tabs -->
         <div class="tool-tabs" id="tool-tabs">
-          <button class="tool-tab active" data-tool="fill">Fill</button>
+          <button class="tool-tab active" data-tool="fill">Color</button>
           <button class="tool-tab" data-tool="gradient">Gradient</button>
           <button class="tool-tab" data-tool="brush">Brush</button>
           <button class="tool-tab" data-tool="eraser">Eraser</button>
           <button class="tool-tab" data-tool="presets">Presets</button>
         </div>
 
-        <!-- Fill panel -->
+        <!-- Fill / Color panel -->
         <div class="tool-panel active" id="panel-fill">
-          <div class="color-swatches" id="color-swatches">
-            <button class="swatch" data-color="#F5E6E8" style="background:#F5E6E8"></button>
-            <button class="swatch" data-color="#E8B4BC" style="background:#E8B4BC"></button>
-            <button class="swatch" data-color="#C4778A" style="background:#C4778A"></button>
-            <button class="swatch" data-color="#A0293C" style="background:#A0293C"></button>
-            <button class="swatch" data-color="#6B1E2A" style="background:#6B1E2A"></button>
-            <button class="swatch" data-color="#F4A896" style="background:#F4A896"></button>
-            <button class="swatch" data-color="#F2C9A8" style="background:#F2C9A8"></button>
-            <button class="swatch" data-color="#E8D5B0" style="background:#E8D5B0"></button>
-            <button class="swatch" data-color="#C8A882" style="background:#C8A882"></button>
-            <button class="swatch" data-color="#B8A4C8" style="background:#B8A4C8"></button>
-            <button class="swatch" data-color="#7A5A9A" style="background:#7A5A9A"></button>
-            <button class="swatch" data-color="#4A6FA5" style="background:#4A6FA5"></button>
-            <button class="swatch" data-color="#4A9A8A" style="background:#4A9A8A"></button>
-            <button class="swatch selected" data-color="#FFFFFF" style="background:#FFFFFF"></button>
-            <button class="swatch" data-color="#1A1A1A" style="background:#1A1A1A"></button>
-            <button class="swatch custom-swatch" id="custom-swatch" title="Custom color">
-              <input type="color" id="custom-color-input" value="#FFFFFF" />
-              <span>+</span>
-            </button>
+          <!-- Color category tabs -->
+          <div class="color-cats">
+            <button class="color-cat active" data-cat="pinks">Pinks</button>
+            <button class="color-cat" data-cat="reds">Reds</button>
+            <button class="color-cat" data-cat="bold">Bold</button>
+            <button class="color-cat" data-cat="nudes">Nudes</button>
           </div>
+          <div class="color-swatches" id="color-swatches"></div>
         </div>
 
         <!-- Gradient panel -->
         <div class="tool-panel" id="panel-gradient">
-          <div class="gradient-controls">
-            <div class="gradient-colors">
-              <div class="gradient-color-pick">
-                <label>From</label>
-                <input type="color" id="grad-color1" value="#E8B4BC" class="color-pick-input" />
-              </div>
-              <div class="gradient-color-pick">
-                <label>To</label>
-                <input type="color" id="grad-color2" value="#FFFFFF" class="color-pick-input" />
-              </div>
+          <div class="gradient-row">
+            <div class="gradient-color-pick">
+              <label>From</label>
+              <input type="color" id="grad-color1" value="#E8B4BC" class="color-pick-input" />
             </div>
-            <div class="gradient-dir-row">
-              <button class="dir-btn active" data-dir="vertical">&#8597; Vertical</button>
-              <button class="dir-btn" data-dir="horizontal">&#8596; Horizontal</button>
-              <button class="dir-btn" data-dir="diagonal">&#8599; Diagonal</button>
+            <div class="gradient-color-pick">
+              <label>To</label>
+              <input type="color" id="grad-color2" value="#FFFFFF" class="color-pick-input" />
             </div>
-            <button class="btn-secondary" id="apply-gradient-btn">Apply Gradient</button>
+            <div class="gradient-dir-col">
+              <button class="dir-btn active" data-dir="vertical">&#8597;</button>
+              <button class="dir-btn" data-dir="horizontal">&#8596;</button>
+              <button class="dir-btn" data-dir="diagonal">&#8599;</button>
+            </div>
+            <button class="btn-secondary" id="apply-gradient-btn">Apply</button>
           </div>
         </div>
 
         <!-- Brush panel -->
         <div class="tool-panel" id="panel-brush">
-          <div class="brush-controls">
-            <label class="control-label">Brush size &nbsp;<span id="brush-size-val">8px</span></label>
-            <input type="range" id="brush-size" class="slider" min="2" max="30" value="8" />
-            <label class="control-label">Opacity &nbsp;<span id="brush-opacity-val">100%</span></label>
-            <input type="range" id="brush-opacity" class="slider" min="10" max="100" value="100" />
-            <label class="control-label">Color</label>
-            <input type="color" id="brush-color-input" value="#C4778A" class="color-pick-input" />
+          <div class="brush-row">
+            <div class="brush-field">
+              <label>Color</label>
+              <input type="color" id="brush-color-input" value="#C4778A" class="color-pick-input" />
+            </div>
+            <div class="brush-field">
+              <label>Size <span id="brush-size-val">8</span>px</label>
+              <input type="range" id="brush-size" class="slider" min="2" max="30" value="8" />
+            </div>
+            <div class="brush-field">
+              <label>Opacity <span id="brush-opacity-val">100</span>%</label>
+              <input type="range" id="brush-opacity" class="slider" min="10" max="100" value="100" />
+            </div>
           </div>
         </div>
 
         <!-- Eraser panel -->
         <div class="tool-panel" id="panel-eraser">
-          <div class="brush-controls">
-            <label class="control-label">Eraser size &nbsp;<span id="eraser-size-val">20px</span></label>
-            <input type="range" id="eraser-size" class="slider" min="4" max="60" value="20" />
-            <p class="tool-hint">Erase parts of your nail design</p>
+          <div class="brush-row">
+            <div class="brush-field">
+              <label>Size <span id="eraser-size-val">20</span>px</label>
+              <input type="range" id="eraser-size" class="slider" min="4" max="60" value="20" />
+            </div>
           </div>
         </div>
 
@@ -224,80 +274,71 @@
         <div class="tool-panel" id="panel-presets">
           <div class="presets-grid">
             <button class="preset-btn" data-preset="french">
-              <span class="preset-preview preset-french"></span>
-              French Tip
+              <span class="preset-prev preset-french"></span>French
             </button>
             <button class="preset-btn" data-preset="ombre-pink">
-              <span class="preset-preview preset-ombre-pink"></span>
-              Pink Ombre
+              <span class="preset-prev preset-ombre-pink"></span>Ombre
             </button>
             <button class="preset-btn" data-preset="red">
-              <span class="preset-preview" style="background:#A0293C"></span>
-              Classic Red
+              <span class="preset-prev" style="background:#A0293C"></span>Red
             </button>
             <button class="preset-btn" data-preset="nude">
-              <span class="preset-preview" style="background:#E8D5B0"></span>
-              Nude
+              <span class="preset-prev" style="background:#E8D5B0"></span>Nude
             </button>
             <button class="preset-btn" data-preset="black">
-              <span class="preset-preview" style="background:#1A1A1A"></span>
-              Black
+              <span class="preset-prev" style="background:#1A1A1A"></span>Black
             </button>
             <button class="preset-btn" data-preset="milky">
-              <span class="preset-preview preset-milky"></span>
-              Milky White
+              <span class="preset-prev preset-milky"></span>Milky
             </button>
           </div>
         </div>
 
-        <!-- Studio action bar -->
-        <div class="studio-actions">
-          <button class="btn-ghost btn-sm" id="apply-all-btn">Apply to all nails</button>
-          <button class="btn-ghost btn-sm" id="undo-btn">&#8617; Undo</button>
+        <!-- Actions + nav -->
+        <div class="studio-footer">
+          <div class="studio-actions">
+            <button class="btn-ghost btn-xs" id="apply-all-btn">Apply to all</button>
+            <button class="btn-ghost btn-xs" id="undo-btn">&#8617; Undo</button>
+          </div>
+          <div class="step-nav">
+            <button class="btn-ghost" id="step3-back">&#8592;</button>
+            <button class="btn-primary" id="generate-btn">&#10024; Generate</button>
+          </div>
         </div>
 
-        <div class="step-nav">
-          <button class="btn-ghost" id="step3-back">&#8592; Back</button>
-          <button class="btn-primary" id="generate-btn">&#10024; Generate Preview</button>
-        </div>
-      </div>
     </section>
 
     <!-- ── Step 4: Result ─────────────────────────────────── -->
     <section id="step-4" class="step">
       <div class="step-content">
 
-        <!-- Loading state -->
         <div class="result-loading" id="result-loading">
           <div class="result-spinner"></div>
           <p class="loading-text">Creating your nail preview&hellip;</p>
-          <p class="loading-sub">This takes about 15&ndash;30 seconds</p>
+          <p class="loading-sub">~20 seconds</p>
         </div>
 
-        <!-- Success state -->
         <div class="result-success" id="result-success" hidden>
           <div class="step-headline">
-            <h2>Your preview ✨</h2>
-            <p class="step-sub">AI-generated salon result</p>
+            <h2>Your preview &#10024;</h2>
           </div>
           <div class="result-photos">
             <div class="result-photo-wrap">
-              <img id="result-original" class="result-photo" alt="Original hand" />
+              <img id="result-original" class="result-photo" alt="Before" />
               <span class="result-label">Before</span>
             </div>
             <div class="result-photo-wrap">
-              <img id="result-generated" class="result-photo" alt="Generated nails" />
+              <img id="result-generated" class="result-photo" alt="After" />
               <span class="result-label">After</span>
             </div>
           </div>
           <div class="result-actions">
-            <a id="download-btn" class="btn-primary" download="nail-preview.png">&#8595; Download</a>
+            <button class="btn-primary" id="download-btn">&#8595; Save to Photos</button>
             <button class="btn-ghost" id="try-again-btn">Try Again</button>
             <button class="btn-ghost" id="start-over-btn">Start Over</button>
           </div>
         </div>
 
-        <!-- Error state -->
         <div class="result-error" id="result-error" hidden>
           <div class="error-icon">&#9888;&#65039;</div>
           <h3>Something went wrong</h3>
@@ -313,10 +354,7 @@
 
   </div><!-- /#app -->
 
-  <!-- MediaPipe Hands CDN (classic script — must load before modules) -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
-
-  <!-- App modules -->
   <script type="module" src="{{ url_for('static', filename='js/nail-canvas.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/detector.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/generator.js') }}"></script>

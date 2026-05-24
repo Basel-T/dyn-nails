@@ -162,19 +162,27 @@ def index():
 
 @app.route("/api/generate", methods=["POST"])
 def api_generate():
-    """JSON endpoint for the new browser-side nail generation flow."""
+    """JSON endpoint for the browser-side nail generation flow."""
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"ok": False, "error": "Invalid JSON payload."}), 400
 
-    hand_b64 = data.get("handPhotoB64", "")
-    mask_b64 = data.get("maskB64", "")
+    hand_b64           = data.get("handPhotoB64", "")
+    mask_b64           = data.get("maskB64", "")
     design_description = data.get("designDescription", "natural nude nails")
-    shape = data.get("shape", "oval")
-    length = data.get("length", "medium")
+    shape              = data.get("shape", "oval")
+    length             = data.get("length", "medium")
+    finish_type        = data.get("finishType", "glossy")
+    size_multiplier    = float(data.get("sizeMultiplier", 1.0))
+    nail_positions     = data.get("nailPositions")   # list or None
+    design_images      = data.get("designImages")    # list or None
 
     if not hand_b64 or not mask_b64:
         return jsonify({"ok": False, "error": "Missing image or mask data."}), 400
+
+    # Append finish type to description if not already included
+    if finish_type and finish_type not in design_description:
+        design_description = f"{finish_type} finish; {design_description}"
 
     try:
         image_b64 = generate_from_design(
@@ -183,6 +191,9 @@ def api_generate():
             design_description=design_description,
             shape=shape,
             length=length,
+            design_images=design_images,
+            nail_positions=nail_positions,
+            size_multiplier=size_multiplier,
         )
         return jsonify({"ok": True, "imageB64": image_b64})
 
@@ -192,7 +203,7 @@ def api_generate():
     except AIGenerationError as error:
         return jsonify({"ok": False, "error": str(error)}), 422
 
-    except Exception as error:
+    except Exception:
         return jsonify({"ok": False, "error": "An unexpected server error occurred."}), 500
 
 
