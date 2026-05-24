@@ -19,10 +19,11 @@ const FINGER_LANDMARKS = {
   pinky:  { tip: 20, dip: 19 },
 };
 
-// Single minimal overlay color — clean and professional
-const OVERLAY_FILL   = 'rgba(255, 255, 255, 0.22)';
-const OVERLAY_STROKE = 'rgba(255, 255, 255, 0.80)';
-const HANDLE_FILL    = '#ffffff';
+// Overlay colors — rose on the light theme
+const OVERLAY_FILL   = 'rgba(196, 119, 138, 0.18)';
+const OVERLAY_STROKE = 'rgba(139, 74, 90, 0.85)';
+const HANDLE_FILL    = '#C4778A';
+const HANDLE_SELECTED_FILL = '#8B4A5A';
 
 const MEDIAPIPE_VERSION = '0.4.1675469240';
 
@@ -139,7 +140,7 @@ export function hitTestNail(clientX, clientY, overlayCanvas, nailPositions) {
 }
 
 // ─── Render overlays on the canvas ───────────────────────────────────
-export function renderOverlays(overlayCanvas, nailPositions, shapeName, lengthMult, sizeMult) {
+export function renderOverlays(overlayCanvas, nailPositions, shapeName, lengthMult, sizeMult, selectedNail) {
   const ctx = overlayCanvas.getContext('2d');
   const W = overlayCanvas.width;
   const H = overlayCanvas.height;
@@ -150,6 +151,7 @@ export function renderOverlays(overlayCanvas, nailPositions, shapeName, lengthMu
     const cy    = nail.centerY  * H;
     const nailW = nail.widthNorm  * W * sizeMult;
     const nailH = nail.heightNorm * H * lengthMult * sizeMult;
+    const isSelected = selectedNail && selectedNail === nail;
 
     // Draw nail shape
     ctx.save();
@@ -159,20 +161,21 @@ export function renderOverlays(overlayCanvas, nailPositions, shapeName, lengthMu
     ctx.translate(-50, -50);
 
     const path = new Path2D(NAIL_SHAPES[shapeName] || NAIL_SHAPES.oval);
-    ctx.fillStyle = OVERLAY_FILL;
+    ctx.fillStyle = isSelected ? 'rgba(139,74,90,0.22)' : OVERLAY_FILL;
     ctx.fill(path);
-    ctx.strokeStyle = OVERLAY_STROKE;
-    ctx.lineWidth = (100 / nailW) * 1.5; // ~1.5px in screen space
+    ctx.strokeStyle = isSelected ? 'rgba(139,74,90,1)' : OVERLAY_STROKE;
+    ctx.lineWidth = (100 / nailW) * (isSelected ? 2 : 1.5);
     ctx.stroke(path);
     ctx.restore();
 
-    // Draw drag handle dot at center
+    // Draw tiny drag handle dot — small so it doesn't hide the nail
+    const dotR = Math.max(2.5, Math.min(4, nailW * 0.06));
     ctx.beginPath();
-    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-    ctx.fillStyle = HANDLE_FILL;
+    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = isSelected ? HANDLE_SELECTED_FILL : HANDLE_FILL;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(196,119,138,0.9)';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
   });
 }

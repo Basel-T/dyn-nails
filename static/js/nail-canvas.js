@@ -138,6 +138,11 @@ export function buildColorSwatches(cat) {
     btn.addEventListener('click', () => {
       container.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
       btn.classList.add('selected');
+      // Update brush color so painting uses the picked color
+      BrushState.color = hex;
+      // Update brush color picker UI if present
+      const brushPicker = document.getElementById('brush-color-input');
+      if (brushPicker) brushPicker.value = hex;
       applyFill(hex);
     });
     container.appendChild(btn);
@@ -153,6 +158,9 @@ export function buildColorSwatches(cat) {
   picker.addEventListener('change', () => {
     container.querySelectorAll('.swatch').forEach((s) => s.classList.remove('selected'));
     custom.classList.add('selected');
+    BrushState.color = picker.value;
+    const brushPicker = document.getElementById('brush-color-input');
+    if (brushPicker) brushPicker.value = picker.value;
     applyFill(picker.value);
   });
   custom.appendChild(picker);
@@ -314,9 +322,10 @@ export function applyGradient(color1, color2, direction, finger) {
 
   let grad;
   switch (direction) {
-    case 'horizontal': grad = ctx.createLinearGradient(0, 0, W, 0); break;
-    case 'diagonal':   grad = ctx.createLinearGradient(0, 0, W, H); break;
-    default:           grad = ctx.createLinearGradient(0, 0, 0, H);
+    case 'horizontal':    grad = ctx.createLinearGradient(0, 0, W, 0); break;
+    case 'diagonal':      grad = ctx.createLinearGradient(0, 0, W, H); break;
+    case 'diagonal-rev':  grad = ctx.createLinearGradient(W, 0, 0, H); break;
+    default:              grad = ctx.createLinearGradient(0, 0, 0, H);
   }
   grad.addColorStop(0, color1);
   grad.addColorStop(1, color2);
