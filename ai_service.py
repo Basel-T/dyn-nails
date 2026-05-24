@@ -1,4 +1,5 @@
 import base64
+import io
 import os
 from datetime import datetime
 from uuid import uuid4
@@ -232,6 +233,157 @@ def prepare_image_and_mask_for_openai(original_image_path, original_mask_path):
         prepared_mask.save(prepared_mask_path, format="PNG", optimize=True)
 
     return prepared_path, prepared_mask_path
+
+
+def prepare_base64_image_and_mask(hand_b64: str, mask_b64: str):
+    """
+    Accept raw base64 strings for the hand photo and mask,
+    resize/normalize them, and return ready-to-use file-like objects
+    along with the prepared mask for OpenAI.
+    Returns (image_bytes_io, mask_bytes_io)
+    """
+    # Decode base64 → PIL Image
+    hand_bytes = base64.b64decode(hand_b64)
+    mask_bytes = base64.b64decode(mask_b64)
+
+    with Image.open(io.BytesIO(hand_bytes)) as image:
+        image = ImageOps.exif_transpose(image)
+        original_size = image.size
+
+        with Image.open(io.BytesIO(mask_bytes)) as mask:
+            mask = mask.convert("RGBA")
+
+            if mask.size != original_size:
+                mask = mask.resize(original_size, Image.Resampling.NEAREST)
+
+            # Resize both to fit within MAX_IMAGE_SIDE
+            image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+            prepared_size = image.size
+            if mask.size != prepared_size:
+                mask = mask.resize(prepared_size, Image.Resampling.LANCZOS)
+
+            # Convert mask: white pixels (nail areas) → transparent (OpenAI editable area)
+            grayscale = mask.convert("L")
+            alpha = grayscale.point(lambda v: 0 if v > 200 else 255)
+            prepared_mask = Image.new("RGBA", prepared_size, (0, 0, 0, 255))
+            prepared_mask.putalpha(alpha)
+
+        # Ensure image is RGB JPEG
+        if image.mode in ("RGBA", "LA"):
+            bg = Image.new("RGB", image.size, (255, 255, 255))
+            bg.paste(image, mask=image.getchannel("A"))
+            image = bg
+        else:
+            image = image.convert("RGB")
+
+        img_io = io.BytesIO()
+        image.save(img_io, format="JPEG", quality=92, optimize=True)
+        img_io.seek(0)
+        img_io.name = "hand.jpg"
+
+        mask_io = io.BytesIO()
+        prepared_mask.save(mask_io, format="PNG", optimize=True)
+        mask_io.seek(0)
+        mask_io.name = "mask.png"
+
+    return img_io, mask_io
+
+
+def build_design_prompt(shape: str, length: str, design_description: str) -> str:
+    """Build the improved generation prompt using the user's drawn design."""
+    return f"""Edit this photo to add photorealistic salon-quality nail art on the hand.
+
+Nail design to apply: {design_description}
+
+Nail shape: {shape}
+Nail length: {length}
+
+Critical rules:
+- Apply the nail design ONLY inside the white-masked nail regions.
+- Nails must look three-dimensional, glossy, and lit consistently with the hand photo.
+- Match the exact colors and patterns described in the nail design.
+- Do not alter the skin, fingers, background, jewelry, or any area outside the masked nails.
+- The result must look like a real photograph of a freshly manicured hand, not a digital illustration.
+- Do not add text, watermarks, or extra objects."""
+
+
+def generate_from_design(
+    hand_photo_b64: str,
+    mask_b64: str,
+    design_description: str,
+    shape: str = "oval",
+    length: str = "medium",
+) -> str:
+    """
+    New API: accept base64 image/mask from the browser,
+    apply the user's nail design via OpenAI image edit.
+    Returns base64 PNG of the generated result.
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise MissingAPIKeyError(
+            "OPENAI_API_KEY is missing. Add it to your .env file and restart."
+        )
+
+    os.makedirs(RESULTS_FOLDER, exist_ok=True)
+    client = OpenAI(api_key=api_key)
+    model, quality = get_image_settings()
+    prompt = build_design_prompt(shape, length, design_description)
+
+    img_io, mask_io = prepare_base64_image_and_mask(hand_photo_b64, mask_b64)
+
+    result_filename = f"nail_preview_{uuid4().hex}.png"
+    result_path = os.path.join(RESULTS_FOLDER, result_filename)
+
+    try:
+        result = client.images.edit(
+            model=model,
+            image=img_io,
+            mask=mask_io,
+            prompt=prompt,
+            size="auto",
+            quality=quality,
+            output_format="png",
+            n=1,
+        )
+
+        image_base64 = result.data[0].b64_json
+        image_bytes = base64.b64decode(image_base64)
+
+        with open(result_path, "wb") as f:
+            f.write(image_bytes)
+
+        return image_base64
+
+    except BadRequestError as error:
+        log_openai_error("BadRequestError in generate_from_design", error)
+        if looks_like_model_access_error(error):
+            raise AIGenerationError(model_fallback_message()) from error
+        raise AIGenerationError(
+            "The AI could not process this image. Try a clearer hand photo with good lighting."
+        ) from error
+
+    except (NotFoundError, PermissionDeniedError) as error:
+        log_openai_error("Model access error in generate_from_design", error)
+        raise AIGenerationError(model_fallback_message()) from error
+
+    except RateLimitError as error:
+        log_openai_error("Rate limit in generate_from_design", error)
+        raise AIGenerationError(
+            "The AI service is temporarily unavailable. Please try again in a moment."
+        ) from error
+
+    except APIError as error:
+        log_openai_error("APIError in generate_from_design", error)
+        raise AIGenerationError(
+            "The AI service had a temporary problem. Please try again."
+        ) from error
+
+    except Exception as error:
+        log_openai_error("Unexpected error in generate_from_design", error)
+        raise AIGenerationError(
+            "Sorry, the AI preview could not be generated. Please try again."
+        ) from error
 
 
 def generate_nail_preview(

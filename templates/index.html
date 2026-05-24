@@ -1,235 +1,325 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DYN | Draw Your Nails</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>DYN — Draw Your Nails</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
 </head>
 <body>
-    <main class="page-shell">
-        <section class="intro">
-            <p class="eyebrow">DYN</p>
-            <h1>Draw Your Nails</h1>
-            <p class="intro-copy">Preview salon-ready nail styles on your own hand photo.</p>
-        </section>
+  <div id="app">
 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <section class="alert" aria-live="polite">
-                    {% for message in messages %}
-                        <p>{{ message }}</p>
-                    {% endfor %}
-                </section>
-            {% endif %}
-        {% endwith %}
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header class="app-header">
+      <span class="logo">✦ DYN</span>
+      <div class="progress-track">
+        <div class="progress-dot active" data-step="1"></div>
+        <div class="progress-line"></div>
+        <div class="progress-dot" data-step="2"></div>
+        <div class="progress-line"></div>
+        <div class="progress-dot" data-step="3"></div>
+        <div class="progress-line"></div>
+        <div class="progress-dot" data-step="4"></div>
+      </div>
+    </header>
 
-        {% if not result %}
-            <form class="preview-form" method="POST" enctype="multipart/form-data">
-                <nav class="step-tabs" aria-label="Preview steps">
-                    <span class="step-tab is-active" id="uploadTab">Upload</span>
-                    <span class="step-tab" id="styleTab">Style</span>
-                    <span class="step-tab" id="maskTab">Mask</span>
-                </nav>
+    <!-- ── Step 1: Upload ─────────────────────────────────── -->
+    <section id="step-1" class="step active">
+      <div class="step-content">
+        <div class="step-headline">
+          <h1>Your nails,<br/>reimagined.</h1>
+          <p class="step-sub">Upload a photo of your hand to get started</p>
+        </div>
 
-                <section class="form-step is-active" id="uploadStep">
-                    <div class="section-heading">
-                        <span class="step-number">1</span>
-                        <div>
-                            <h2>Upload Hand Photo</h2>
-                            <p>Start with a photo where the nails are visible.</p>
-                        </div>
-                    </div>
+        <div class="upload-zone" id="upload-zone" role="button" tabindex="0">
+          <div class="upload-icon">📷</div>
+          <p class="upload-label">Tap to upload or take a photo</p>
+          <p class="upload-hint">JPG, PNG or WEBP &bull; front of hand works best</p>
+          <input type="file" id="photo-input" accept="image/*" capture="environment" hidden />
+        </div>
 
-                    <div class="upload-box" id="uploadBox">
-                        <div class="upload-placeholder" id="uploadPlaceholder">
-                            <span class="upload-icon" aria-hidden="true">
-                                <span></span>
-                            </span>
-                            <span class="upload-title">Upload a hand photo</span>
-                            <span class="upload-note"></span>
-                        </div>
+        <div class="preview-wrap" id="preview-wrap" hidden>
+          <img id="upload-preview" class="upload-preview" alt="Your hand photo" />
+          <button class="change-btn" id="change-photo-btn">Change photo</button>
+        </div>
 
-                        <div class="upload-preview" id="uploadPreview" hidden>
-                            <img id="uploadPreviewImage" src="" alt="Selected hand photo preview">
-                            <div class="upload-preview-actions">
-                                <button class="change-photo-button" id="changePhotoButton" type="button">
-                                    Change photo
-                                </button>
-                            </div>
-                        </div>
+        <button class="btn-primary" id="step1-next" disabled>Continue →</button>
+      </div>
+    </section>
 
-                        <input
-                            class="upload-input"
-                            id="hand_photo"
-                            name="hand_photo"
-                            type="file"
-                            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                            required
-                        >
-                    </div>
+    <!-- ── Step 2: Detect & Style ─────────────────────────── -->
+    <section id="step-2" class="step">
+      <div class="step-content">
+        <div class="step-headline">
+          <h2>Position your nails</h2>
+          <p class="step-sub">Drag the dots to fine-tune each nail</p>
+        </div>
 
-                    <button class="primary-button next-button" id="goToStylesButton" type="button" disabled>
-                        Continue
-                    </button>
-                </section>
+        <!-- Photo + overlay canvas -->
+        <div class="photo-overlay-wrap" id="photo-overlay-wrap">
+          <img id="detection-photo" class="detection-photo" alt="Hand photo" />
+          <canvas id="overlay-canvas" class="overlay-canvas"></canvas>
+          <div class="detect-status" id="detect-status">
+            <span class="detect-spinner"></span> Detecting nails&hellip;
+          </div>
+        </div>
 
-                <section class="form-step" id="styleStep" hidden>
-                    <div class="section-heading">
-                        <span class="step-number">2</span>
-                        <div>
-                            <h2>Choose Nail Style</h2>
-                            <p>Swipe through the examples and pick one style.</p>
-                        </div>
-                    </div>
+        <button class="btn-ghost btn-sm" id="redetect-btn" style="margin-top:8px">&#8635; Re-detect</button>
 
-                    <div class="style-grid">
-                        {% for style in styles %}
-                            <label class="style-card">
-                                <input
-                                    type="radio"
-                                    name="nail_style"
-                                    value="{{ style }}"
-                                >
-                                <span class="style-example style-example-{{ loop.index }}" aria-hidden="true"></span>
-                                <span class="style-copy">
-                                    <span class="style-name">{{ style }}</span>
-                                    <span class="selected-pill" aria-hidden="true">Selected</span>
-                                </span>
-                            </label>
-                        {% endfor %}
-                    </div>
+        <!-- Shape selector -->
+        <div class="control-group">
+          <label class="control-label">Shape</label>
+          <div class="shape-grid" id="shape-grid">
+            <button class="shape-btn active" data-shape="oval">Oval</button>
+            <button class="shape-btn" data-shape="round">Round</button>
+            <button class="shape-btn" data-shape="square">Square</button>
+            <button class="shape-btn" data-shape="squoval">Squoval</button>
+            <button class="shape-btn" data-shape="almond">Almond</button>
+            <button class="shape-btn" data-shape="stiletto">Stiletto</button>
+            <button class="shape-btn" data-shape="ballerina">Ballerina</button>
+            <button class="shape-btn" data-shape="lipstick">Lipstick</button>
+          </div>
+        </div>
 
-                    <div class="button-row">
-                        <button class="secondary-button" id="backToUploadButton" type="button">Back</button>
-                        <button class="primary-button" id="goToMaskButton" type="button">Continue to Mask</button>
-                    </div>
-                </section>
+        <!-- Length selector -->
+        <div class="control-group">
+          <label class="control-label">Length</label>
+          <div class="length-options">
+            <button class="length-btn" data-length="short">Short</button>
+            <button class="length-btn active" data-length="medium">Medium</button>
+            <button class="length-btn" data-length="long">Long</button>
+          </div>
+        </div>
 
-                <section class="form-step" id="maskStep" hidden>
-                    <div class="editor-topbar">
-                        <button class="topbar-button" id="backToStylesButton" type="button">Back</button>
-                        <div>
-                            <h2>Adjust nails</h2>
-                            <p id="savedNailsCount">0 saved</p>
-                        </div>
-                        <button class="topbar-button primary-topbar" id="topGenerateButton" type="button" disabled>Generate</button>
-                    </div>
+        <!-- Size slider -->
+        <div class="control-group">
+          <label class="control-label">Width &nbsp;<span id="size-val">100%</span></label>
+          <input type="range" id="size-slider" class="slider" min="60" max="140" value="100" />
+        </div>
 
-                    <input id="nail_mask" name="nail_mask" type="file" accept="image/png" hidden>
-                    <input id="selected_shape" name="selected_shape" type="hidden" value="oval">
-                    <input id="selected_length" name="selected_length" type="hidden" value="medium">
+        <div class="step-nav">
+          <button class="btn-ghost" id="step2-back">&#8592; Back</button>
+          <button class="btn-primary" id="step2-next">Continue &#8594;</button>
+        </div>
+      </div>
+    </section>
 
-                    <div class="guide-editor editor-shell">
-                        <div class="mask-canvas-wrap" id="maskCanvasWrap">
-                            <canvas id="guideCanvas"></canvas>
-                            <div class="editor-hint" id="editorInstruction">Tap the center of a nail to start.</div>
-                        </div>
-                    </div>
+    <!-- ── Step 3: Design Studio ──────────────────────────── -->
+    <section id="step-3" class="step">
+      <div class="step-content">
+        <div class="step-headline">
+          <h2>Design studio</h2>
+          <p class="step-sub">Tap a nail to edit &bull; use tools below to paint</p>
+        </div>
 
-                    <div class="editor-bottom-bar" aria-label="Nail editor actions">
-                        <div class="editor-fine-controls">
-                            <div class="shape-picker-field">
-                                <span class="control-label">Shape</span>
-                                <select class="visually-hidden-select" id="visibleShapeSelect" aria-label="Nail shape">
-                                    <option value="oval">Oval</option>
-                                    <option value="squoval">Squoval</option>
-                                    <option value="square">Square</option>
-                                    <option value="ballerina">Ballerina</option>
-                                    <option value="stiletto">Stiletto</option>
-                                    <option value="almond">Almond</option>
-                                </select>
-                                <button class="shape-picker-trigger" id="shapePickerTrigger" type="button" aria-expanded="false">
-                                    Oval
-                                </button>
-                                <div class="shape-choice-panel" id="shapeChoicePanel" aria-label="Choose nail shape" hidden>
-                                    <button class="shape-choice is-active" type="button" data-shape="oval">Oval</button>
-                                    <button class="shape-choice" type="button" data-shape="squoval">Squoval</button>
-                                    <button class="shape-choice" type="button" data-shape="square">Square</button>
-                                    <button class="shape-choice" type="button" data-shape="ballerina">Ballerina</button>
-                                    <button class="shape-choice" type="button" data-shape="stiletto">Stiletto</button>
-                                    <button class="shape-choice" type="button" data-shape="almond">Almond</button>
-                                </div>
-                            </div>
-                            <label class="rotation-field" for="visibleRotationSlider">
-                                Rotation
-                                <input id="visibleRotationSlider" type="range" min="-45" max="45" value="0">
-                            </label>
-                            <label class="size-field" for="sizeSlider">
-                                Size
-                                <input id="sizeSlider" type="range" min="70" max="140" value="100">
-                            </label>
-                            <label class="sharpness-field" for="sharpnessSlider">
-                                Sharpness
-                                <input id="sharpnessSlider" type="range" min="0" max="100" value="65">
-                            </label>
-                            <button class="symmetry-toggle" id="symmetryToggleButton" type="button" aria-pressed="true">
-                                Symmetry ON
-                            </button>
-                        </div>
+        <!-- Nail thumbnail row -->
+        <div class="nail-thumb-row" id="nail-thumb-row">
+          <div class="nail-thumb-wrap active" data-finger="thumb">
+            <canvas class="nail-thumb-canvas" data-finger="thumb" width="200" height="280"></canvas>
+            <span class="nail-label">T</span>
+          </div>
+          <div class="nail-thumb-wrap" data-finger="index">
+            <canvas class="nail-thumb-canvas" data-finger="index" width="200" height="280"></canvas>
+            <span class="nail-label">I</span>
+          </div>
+          <div class="nail-thumb-wrap" data-finger="middle">
+            <canvas class="nail-thumb-canvas" data-finger="middle" width="200" height="280"></canvas>
+            <span class="nail-label">M</span>
+          </div>
+          <div class="nail-thumb-wrap" data-finger="ring">
+            <canvas class="nail-thumb-canvas" data-finger="ring" width="200" height="280"></canvas>
+            <span class="nail-label">R</span>
+          </div>
+          <div class="nail-thumb-wrap" data-finger="pinky">
+            <canvas class="nail-thumb-canvas" data-finger="pinky" width="200" height="280"></canvas>
+            <span class="nail-label">P</span>
+          </div>
+        </div>
 
-                        <div class="editor-action-row">
-                            <button class="editor-button secondary-action" id="saveNailButton" type="button">Save Nail</button>
-                            <button class="editor-button secondary-action" id="addNailButton" type="button">Add Nail</button>
-                            <button class="editor-button ghost-action" id="undoButton" type="button" disabled>Undo</button>
-                            <button class="editor-button danger-action" id="deleteNailButton" type="button">Delete</button>
-                            <button class="editor-button ghost-action" id="viewFullButton" type="button">View Full</button>
-                            <button class="editor-button primary-action" id="bottomGenerateButton" type="button" disabled>Generate</button>
-                        </div>
-                    </div>
+        <!-- Active editing canvas -->
+        <div class="active-nail-wrap">
+          <canvas id="active-nail-canvas" width="200" height="280"></canvas>
+        </div>
 
-                    <div class="hidden-editor-settings" aria-hidden="true">
-                        <input class="hidden-slider" id="lengthSlider" type="range" min="60" max="180" value="110" tabindex="-1">
-                        <input class="hidden-slider" id="widthSlider" type="range" min="30" max="120" value="58" tabindex="-1">
-                    </div>
+        <!-- Tool tabs -->
+        <div class="tool-tabs" id="tool-tabs">
+          <button class="tool-tab active" data-tool="fill">Fill</button>
+          <button class="tool-tab" data-tool="gradient">Gradient</button>
+          <button class="tool-tab" data-tool="brush">Brush</button>
+          <button class="tool-tab" data-tool="eraser">Eraser</button>
+          <button class="tool-tab" data-tool="presets">Presets</button>
+        </div>
 
-                    <button class="primary-button hidden-submit" id="submitButton" type="submit">Generate Preview</button>
-                </section>
-            </form>
-        {% else %}
-            <section class="result-panel" id="resultSection">
-                <nav class="step-tabs" aria-label="Preview steps">
-                    <span class="step-tab">Upload</span>
-                    <span class="step-tab">Style</span>
-                    <span class="step-tab is-active">Result</span>
-                </nav>
+        <!-- Fill panel -->
+        <div class="tool-panel active" id="panel-fill">
+          <div class="color-swatches" id="color-swatches">
+            <button class="swatch" data-color="#F5E6E8" style="background:#F5E6E8"></button>
+            <button class="swatch" data-color="#E8B4BC" style="background:#E8B4BC"></button>
+            <button class="swatch" data-color="#C4778A" style="background:#C4778A"></button>
+            <button class="swatch" data-color="#A0293C" style="background:#A0293C"></button>
+            <button class="swatch" data-color="#6B1E2A" style="background:#6B1E2A"></button>
+            <button class="swatch" data-color="#F4A896" style="background:#F4A896"></button>
+            <button class="swatch" data-color="#F2C9A8" style="background:#F2C9A8"></button>
+            <button class="swatch" data-color="#E8D5B0" style="background:#E8D5B0"></button>
+            <button class="swatch" data-color="#C8A882" style="background:#C8A882"></button>
+            <button class="swatch" data-color="#B8A4C8" style="background:#B8A4C8"></button>
+            <button class="swatch" data-color="#7A5A9A" style="background:#7A5A9A"></button>
+            <button class="swatch" data-color="#4A6FA5" style="background:#4A6FA5"></button>
+            <button class="swatch" data-color="#4A9A8A" style="background:#4A9A8A"></button>
+            <button class="swatch selected" data-color="#FFFFFF" style="background:#FFFFFF"></button>
+            <button class="swatch" data-color="#1A1A1A" style="background:#1A1A1A"></button>
+            <button class="swatch custom-swatch" id="custom-swatch" title="Custom color">
+              <input type="color" id="custom-color-input" value="#FFFFFF" />
+              <span>+</span>
+            </button>
+          </div>
+        </div>
 
-                <div class="section-heading">
-                    <span class="step-number">3</span>
-                    <div>
-                        <h2>Your Preview Request</h2>
-                        <p>{{ result.message }}</p>
-                    </div>
-                </div>
+        <!-- Gradient panel -->
+        <div class="tool-panel" id="panel-gradient">
+          <div class="gradient-controls">
+            <div class="gradient-colors">
+              <div class="gradient-color-pick">
+                <label>From</label>
+                <input type="color" id="grad-color1" value="#E8B4BC" class="color-pick-input" />
+              </div>
+              <div class="gradient-color-pick">
+                <label>To</label>
+                <input type="color" id="grad-color2" value="#FFFFFF" class="color-pick-input" />
+              </div>
+            </div>
+            <div class="gradient-dir-row">
+              <button class="dir-btn active" data-dir="vertical">&#8597; Vertical</button>
+              <button class="dir-btn" data-dir="horizontal">&#8596; Horizontal</button>
+              <button class="dir-btn" data-dir="diagonal">&#8599; Diagonal</button>
+            </div>
+            <button class="btn-secondary" id="apply-gradient-btn">Apply Gradient</button>
+          </div>
+        </div>
 
-                <div class="result-content result-comparison">
-                    <div class="result-image-card">
-                        <span class="result-label">Original photo</span>
-                        <img src="{{ result.original_image_url }}" alt="Original uploaded hand photo">
-                    </div>
+        <!-- Brush panel -->
+        <div class="tool-panel" id="panel-brush">
+          <div class="brush-controls">
+            <label class="control-label">Brush size &nbsp;<span id="brush-size-val">8px</span></label>
+            <input type="range" id="brush-size" class="slider" min="2" max="30" value="8" />
+            <label class="control-label">Opacity &nbsp;<span id="brush-opacity-val">100%</span></label>
+            <input type="range" id="brush-opacity" class="slider" min="10" max="100" value="100" />
+            <label class="control-label">Color</label>
+            <input type="color" id="brush-color-input" value="#C4778A" class="color-pick-input" />
+          </div>
+        </div>
 
-                    <div class="result-image-card">
-                        <span class="result-label">AI nail preview</span>
-                        <img src="{{ result.generated_image_url }}" alt="AI generated nail preview">
-                    </div>
+        <!-- Eraser panel -->
+        <div class="tool-panel" id="panel-eraser">
+          <div class="brush-controls">
+            <label class="control-label">Eraser size &nbsp;<span id="eraser-size-val">20px</span></label>
+            <input type="range" id="eraser-size" class="slider" min="4" max="60" value="20" />
+            <p class="tool-hint">Erase parts of your nail design</p>
+          </div>
+        </div>
 
-                    <div class="result-details">
-                        <span class="result-label">Selected style</span>
-                        <strong>{{ result.selected_style }}</strong>
-                    </div>
-                </div>
+        <!-- Presets panel -->
+        <div class="tool-panel" id="panel-presets">
+          <div class="presets-grid">
+            <button class="preset-btn" data-preset="french">
+              <span class="preset-preview preset-french"></span>
+              French Tip
+            </button>
+            <button class="preset-btn" data-preset="ombre-pink">
+              <span class="preset-preview preset-ombre-pink"></span>
+              Pink Ombre
+            </button>
+            <button class="preset-btn" data-preset="red">
+              <span class="preset-preview" style="background:#A0293C"></span>
+              Classic Red
+            </button>
+            <button class="preset-btn" data-preset="nude">
+              <span class="preset-preview" style="background:#E8D5B0"></span>
+              Nude
+            </button>
+            <button class="preset-btn" data-preset="black">
+              <span class="preset-preview" style="background:#1A1A1A"></span>
+              Black
+            </button>
+            <button class="preset-btn" data-preset="milky">
+              <span class="preset-preview preset-milky"></span>
+              Milky White
+            </button>
+          </div>
+        </div>
 
-                <div class="result-actions">
-                    <a class="secondary-link" href="{{ url_for('index') }}">Try Same Style Again</a>
-                    <a class="secondary-link" href="{{ url_for('index') }}">Try Another Style</a>
-                    <a class="primary-link" href="{{ result.generated_image_url }}" download>
-                        Download Preview
-                    </a>
-                </div>
-            </section>
-        {% endif %}
-    </main>
+        <!-- Studio action bar -->
+        <div class="studio-actions">
+          <button class="btn-ghost btn-sm" id="apply-all-btn">Apply to all nails</button>
+          <button class="btn-ghost btn-sm" id="undo-btn">&#8617; Undo</button>
+        </div>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+        <div class="step-nav">
+          <button class="btn-ghost" id="step3-back">&#8592; Back</button>
+          <button class="btn-primary" id="generate-btn">&#10024; Generate Preview</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Step 4: Result ─────────────────────────────────── -->
+    <section id="step-4" class="step">
+      <div class="step-content">
+
+        <!-- Loading state -->
+        <div class="result-loading" id="result-loading">
+          <div class="result-spinner"></div>
+          <p class="loading-text">Creating your nail preview&hellip;</p>
+          <p class="loading-sub">This takes about 15&ndash;30 seconds</p>
+        </div>
+
+        <!-- Success state -->
+        <div class="result-success" id="result-success" hidden>
+          <div class="step-headline">
+            <h2>Your preview ✨</h2>
+            <p class="step-sub">AI-generated salon result</p>
+          </div>
+          <div class="result-photos">
+            <div class="result-photo-wrap">
+              <img id="result-original" class="result-photo" alt="Original hand" />
+              <span class="result-label">Before</span>
+            </div>
+            <div class="result-photo-wrap">
+              <img id="result-generated" class="result-photo" alt="Generated nails" />
+              <span class="result-label">After</span>
+            </div>
+          </div>
+          <div class="result-actions">
+            <a id="download-btn" class="btn-primary" download="nail-preview.png">&#8595; Download</a>
+            <button class="btn-ghost" id="try-again-btn">Try Again</button>
+            <button class="btn-ghost" id="start-over-btn">Start Over</button>
+          </div>
+        </div>
+
+        <!-- Error state -->
+        <div class="result-error" id="result-error" hidden>
+          <div class="error-icon">&#9888;&#65039;</div>
+          <h3>Something went wrong</h3>
+          <p id="error-message" class="error-message">Please try again.</p>
+          <div class="result-actions">
+            <button class="btn-primary" id="retry-btn">Try Again</button>
+            <button class="btn-ghost" id="error-start-over-btn">Start Over</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div><!-- /#app -->
+
+  <!-- MediaPipe Hands CDN (classic script — must load before modules) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
+
+  <!-- App modules -->
+  <script type="module" src="{{ url_for('static', filename='js/nail-canvas.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/detector.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/generator.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/wizard.js') }}"></script>
 </body>
 </html>

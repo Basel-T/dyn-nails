@@ -2,10 +2,10 @@ import os
 from uuid import uuid4
 
 from dotenv import load_dotenv
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
 from werkzeug.utils import secure_filename
 
-from ai_service import AIGenerationError, MissingAPIKeyError, generate_nail_preview
+from ai_service import AIGenerationError, MissingAPIKeyError, generate_nail_preview, generate_from_design
 
 
 # Load environment variables from a local .env file.
@@ -158,6 +158,42 @@ def index():
             return redirect(url_for("index"))
 
     return render_template("index.html", styles=NAIL_STYLES, result=result)
+
+
+@app.route("/api/generate", methods=["POST"])
+def api_generate():
+    """JSON endpoint for the new browser-side nail generation flow."""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "Invalid JSON payload."}), 400
+
+    hand_b64 = data.get("handPhotoB64", "")
+    mask_b64 = data.get("maskB64", "")
+    design_description = data.get("designDescription", "natural nude nails")
+    shape = data.get("shape", "oval")
+    length = data.get("length", "medium")
+
+    if not hand_b64 or not mask_b64:
+        return jsonify({"ok": False, "error": "Missing image or mask data."}), 400
+
+    try:
+        image_b64 = generate_from_design(
+            hand_photo_b64=hand_b64,
+            mask_b64=mask_b64,
+            design_description=design_description,
+            shape=shape,
+            length=length,
+        )
+        return jsonify({"ok": True, "imageB64": image_b64})
+
+    except MissingAPIKeyError as error:
+        return jsonify({"ok": False, "error": str(error)}), 500
+
+    except AIGenerationError as error:
+        return jsonify({"ok": False, "error": str(error)}), 422
+
+    except Exception as error:
+        return jsonify({"ok": False, "error": "An unexpected server error occurred."}), 500
 
 
 if __name__ == "__main__":
